@@ -1,0 +1,38 @@
+{
+  "properties": {
+    "displayName": "Restrict deployments to approved Azure regions",
+    "description": "Only allows resource deployment in East US 2, Central US, and West US 2.",
+    "mode": "Indexed",
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "location",
+            "notIn": "[parameters('allowedLocations')]"
+          },
+          {
+            "field": "location",
+            "notEquals": "global"
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    },
+    "parameters": {
+      "allowedLocations": {
+        "type": "Array",
+        "metadata": {
+          "displayName": "Allowed locations",
+          "description": "Azure regions where resources can be deployed"
+        },
+        "defaultValue": [
+          "eastus2",
+          "centralus",
+          "westus2"
+        ]
+      }
+    }
+  }
+}

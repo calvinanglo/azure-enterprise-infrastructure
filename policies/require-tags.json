@@ -1,0 +1,29 @@
+{
+  "properties": {
+    "displayName": "Require mandatory tags on all resources",
+    "description": "Denies resource creation if Environment, CostCenter, or ManagedBy tags are missing.",
+    "mode": "Indexed",
+    "policyRule": {
+      "if": {
+        "anyOf": [
+          {
+            "field": "tags['Environment']",
+            "exists": "false"
+          },
+          {
+            "field": "tags['CostCenter']",
+            "exists": "false"
+          },
+          {
+            "field": "tags['ManagedBy']",
+            "exists": "false"
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    },
+    "parameters": {}
+  }
+}

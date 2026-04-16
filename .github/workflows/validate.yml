@@ -1,0 +1,56 @@
+name: Validate Bicep Templates
+
+on:
+  pull_request:
+    paths:
+      - 'bicep/**'
+      - 'policies/**'
+  push:
+    branches: [main]
+    paths:
+      - 'bicep/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  lint-and-validate:
+    name: Lint & What-If
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bicep Lint
+        run: |
+          az bicep install
+          find bicep/ -name '*.bicep' -exec az bicep build --file {} --stdout \; > /dev/null
+        shell: bash
+
+      - name: What-If (Dev)
+        run: |
+          az deployment sub what-if \
+            --location eastus2 \
+            --template-file bicep/main.bicep \
+            --parameters bicep/parameters/dev.bicepparam \
+            --result-format FullResourcePayloads \
+            --no-prompt
+        shell: bash
+
+      - name: Policy Validation
+        run: |
+          for policy in policies/*.json; do
+            echo "Validating: $policy"
+            jq empty "$policy" || exit 1
+          done
+        shell: bash

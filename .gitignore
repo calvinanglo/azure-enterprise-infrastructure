@@ -1,0 +1,17 @@
+# Build outputs
+*.json.bak
+*.compiled.json
+
+# Secrets
+.env
+*.pfx
+*.pem
+credentials.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/

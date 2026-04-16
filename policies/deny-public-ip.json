@@ -1,0 +1,31 @@
+{
+  "properties": {
+    "displayName": "Deny public IP addresses on VM network interfaces",
+    "description": "Prevents VMs from being assigned public IP addresses. All access must go through Azure Bastion or Load Balancer.",
+    "mode": "Indexed",
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.Network/networkInterfaces"
+          },
+          {
+            "count": {
+              "field": "Microsoft.Network/networkInterfaces/ipConfigurations[*]",
+              "where": {
+                "field": "Microsoft.Network/networkInterfaces/ipConfigurations[*].publicIpAddress.id",
+                "exists": "true"
+              }
+            },
+            "greaterOrEquals": 1
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    },
+    "parameters": {}
+  }
+}
