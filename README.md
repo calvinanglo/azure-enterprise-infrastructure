@@ -97,9 +97,10 @@ azure-enterprise-infrastructure/
 │   ├── allowed-locations.json        # Geo-restrict deployments
 │   └── deny-public-ip.json           # Block uncontrolled public IPs
 ├── docs/
-│   ├── DEPLOYMENT-GUIDE.md           # 41-step guide with 46 screenshots
+│   ├── DEPLOYMENT-GUIDE.md           # 41-step IaC deployment guide (Bicep + PowerShell)
+│   ├── PORTAL-DEPLOYMENT-GUIDE.md    # Full portal-only GUI deployment guide (no CLI)
 │   ├── architecture/                 # Diagrams
-│   └── screenshots/                  # Portal verification screenshots
+│   └── screenshots/                  # 21 Azure Portal verification screenshots
 ├── .github/
 │   └── workflows/
 │       └── validate.yml              # CI: bicep lint + what-if on PR
@@ -149,6 +150,86 @@ az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
 | **Total** | **~$585/mo** |
 
 > Swap Firewall Basic → Standard ($950/mo) for production traffic filtering. Use `dev.bicepparam` to deploy smaller SKUs for testing.
+
+---
+
+## Deployment Guides
+
+### Option A: Infrastructure as Code (Bicep + PowerShell)
+
+See **[docs/DEPLOYMENT-GUIDE.md](docs/DEPLOYMENT-GUIDE.md)** — 41-step deployment using Bicep modules and PowerShell scripts. Recommended for repeatable, version-controlled deployments.
+
+### Option B: Azure Portal GUI Only (No CLI)
+
+See **[docs/PORTAL-DEPLOYMENT-GUIDE.md](docs/PORTAL-DEPLOYMENT-GUIDE.md)** — Complete step-by-step portal walkthrough. Every resource created by clicking through the Azure Portal. Covers all 5 AZ-104 domains across 7 phases with verification checklists.
+
+---
+
+## Live Azure Portal Screenshots
+
+Every resource deployed and verified in a live Azure subscription.
+
+### Resource Groups & Dashboard
+| | |
+|---|---|
+| ![Azure Portal Dashboard](docs/screenshots/01-azure-portal-dashboard.png) | ![Resource Groups](docs/screenshots/05-resource-groups.png) |
+| Portal Dashboard | 5 Resource Groups by Function |
+
+### Networking — Hub-Spoke Topology
+| | |
+|---|---|
+| ![Hub VNet Subnets](docs/screenshots/12-hub-vnet-subnets.png) | ![VNet Peering](docs/screenshots/15-vnet-peering.png) |
+| Hub VNet — AzureFirewallSubnet, AzureBastionSubnet, GatewaySubnet | 4 VNet Peerings (Hub ↔ Web, Hub ↔ App) |
+| ![Bastion Overview](docs/screenshots/14-bastion-overview.png) | ![Route Table UDR](docs/screenshots/18-route-table-udr.png) |
+| Azure Bastion — Secure VM Access (no public IPs) | User-Defined Routes — Force traffic through Firewall |
+
+### Network Security Groups
+| | |
+|---|---|
+| ![NSG Web Rules](docs/screenshots/16-nsg-web-rules.png) | ![NSG App Rules](docs/screenshots/17-nsg-app-rules.png) |
+| Web Tier NSG — Allow HTTP/HTTPS inbound | App Tier NSG — Allow traffic from web subnet only |
+
+### Load Balancers
+| | |
+|---|---|
+| ![LB Web Overview](docs/screenshots/20-lb-web-overview.png) | ![LB Web Rules](docs/screenshots/21-lb-web-rules.png) |
+| Public Load Balancer — Web Tier | LB Rules — HTTP/HTTPS with health probes |
+| ![LB App Internal](docs/screenshots/22-lb-app-internal.png) | |
+| Internal Load Balancer — App Tier | |
+
+### DNS
+| | |
+|---|---|
+| ![DNS Zone Overview](docs/screenshots/23-dns-zone-overview.png) | ![DNS Record Sets](docs/screenshots/24-dns-record-sets.png) |
+| Public DNS Zone — A, CNAME, MX, TXT records | Record Sets — Full DNS configuration |
+| ![Private DNS Zone](docs/screenshots/24b-private-dns-zone.png) | |
+| Private DNS Zone — Internal name resolution | |
+
+### Storage
+| | |
+|---|---|
+| ![Storage Overview](docs/screenshots/25-storage-overview.png) | ![Storage Containers](docs/screenshots/26-storage-containers.png) |
+| Storage Account — LRS, blob versioning, soft delete | Blob Containers — deploy, logs, backups |
+| ![Storage Lifecycle](docs/screenshots/27-storage-lifecycle.png) | |
+| Lifecycle Management — Cool → Archive → Delete | |
+
+### Security
+| | |
+|---|---|
+| ![Key Vault Overview](docs/screenshots/28-keyvault-overview.png) | ![Managed Identity](docs/screenshots/35-managed-identity.png) |
+| Key Vault — RBAC mode, purge protection enabled | User-Assigned Managed Identity |
+
+### Compute & Backup
+| | |
+|---|---|
+| ![Recovery Vault](docs/screenshots/30-recovery-vault.png) | |
+| Recovery Services Vault — VM + file share backup policies | |
+
+### Monitoring
+| | |
+|---|---|
+| ![Log Analytics](docs/screenshots/38-log-analytics.png) | |
+| Log Analytics Workspace — Diagnostics, alerts, VM Insights | |
 
 ---
 
