@@ -12,9 +12,9 @@
 //   - Reused across deployments without rotation
 // UAMIs authenticate to Azure AD and obtain tokens to call Azure APIs/services.
 
-// This module deploys at subscription scope to allow RBAC role assignments
-// to be made at subscription, resource group, or resource level downstream
-targetScope = 'subscription'
+// Managed identities are RG-scoped resources. This module runs at resource
+// group scope; the caller passes 'scope: rgSecurity' from main.bicep.
+targetScope = 'resourceGroup'
 
 // -- Parameters ---------------------------------------------------------------
 

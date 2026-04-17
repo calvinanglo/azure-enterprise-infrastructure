@@ -68,6 +68,14 @@ param globalTags object = {
   DeployedOn: deploymentTimestamp
 }
 
+// VMSS admin password — @secure() prevents the value from appearing in
+// deployment history or ARM logs. In production, source this from a Key Vault
+// reference in the parameter file or inject from the CI/CD pipeline via a
+// secure environment variable (e.g. GitHub Actions secrets).
+@secure()
+@description('Admin password for VMSS instances — inject from Key Vault or pipeline secret')
+param adminPassword string
+
 // ── Variables ───────────────────────────────────────────────────────────────
 
 // resourceGroupNames: A single object variable that consolidates all resource
@@ -306,6 +314,9 @@ module compute 'modules/compute.bicep' = {
     // from Key Vault without storing credentials in the VM extension config.
     keyVaultName: keyvault.outputs.keyVaultName
     keyVaultResourceGroup: rgSecurity.name
+    // Admin password flows from main.bicep's @secure() param — never stored
+    // in source. Supplied via Key Vault reference or pipeline secret.
+    adminPassword: adminPassword
   }
 }
 
@@ -464,7 +475,9 @@ module identity 'modules/identity.bicep' = {
 // managed identity resources can be referenced across resource groups.
 module entraIdentity 'modules/entra-identity.bicep' = {
   name: 'deploy-entra-identity-${deploymentTimestamp}'
-  // No scope = subscription scope; managed identities are subscription-level.
+  // Managed identities are RG-scoped resources; deploy into the security RG
+  // so they sit alongside Key Vault and other identity infrastructure.
+  scope: rgSecurity
   params: {
     environment: environment
   }

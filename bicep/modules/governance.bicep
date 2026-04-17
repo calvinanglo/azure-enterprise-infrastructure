@@ -147,21 +147,23 @@ resource storageHttps 'Microsoft.Authorization/policyAssignments@2023-04-01' = {
 // The 'if (environment == "prod")' condition skips lock creation in non-prod
 // environments where developers need to freely create and delete resources.
 
+// Locks that target a different scope than the enclosing Bicep file must be
+// deployed via a nested module. The sub-module `rg-lock.bicep` runs at
+// resourceGroup scope; this governance module runs at subscription scope.
+
 // Networking resource group lock — prevents accidental deletion of VNets,
 // NSGs, route tables, and other networking infrastructure that would take
 // down all application connectivity if removed
-resource networkingLock 'Microsoft.Authorization/locks@2020-05-01' = if (environment == 'prod') {
-  // Lock name must be unique within the scope it is applied to
-  name: 'lock-networking-nodelete'
+module networkingLock 'rg-lock.bicep' = if (environment == 'prod') {
+  name: 'deploy-lock-networking'
   // scope targets a specific resource group by name from the parameter array;
   // index [0] = networking RG by convention
   scope: resourceGroup(resourceGroupNames[0])
-  properties: {
+  params: {
+    lockName: 'lock-networking-nodelete'
     // CanNotDelete: admins can still modify network configurations (add routes,
     // update NSG rules) but cannot delete the RG or its resources
-    level: 'CanNotDelete'
-    // notes appear in the Azure portal lock details blade — describe why the
-    // lock exists and who to contact to have it removed
+    lockLevel: 'CanNotDelete'
     notes: 'Production networking resources — cannot be deleted without removing lock first'
   }
 }
@@ -169,13 +171,14 @@ resource networkingLock 'Microsoft.Authorization/locks@2020-05-01' = if (environ
 // Security resource group lock — protects Key Vault and related security
 // resources. Accidental deletion of Key Vault would break all applications
 // that rely on stored secrets, keys, and certificates.
-resource securityLock 'Microsoft.Authorization/locks@2020-05-01' = if (environment == 'prod') {
-  name: 'lock-security-nodelete'
+module securityLock 'rg-lock.bicep' = if (environment == 'prod') {
+  name: 'deploy-lock-security'
   // index [3] = security RG by convention (Key Vault, managed identities)
   scope: resourceGroup(resourceGroupNames[3])
-  properties: {
+  params: {
+    lockName: 'lock-security-nodelete'
     // CanNotDelete: still allows secret rotation and vault configuration changes
-    level: 'CanNotDelete'
+    lockLevel: 'CanNotDelete'
     notes: 'Key Vault and security resources — protected from accidental deletion'
   }
 }
@@ -184,14 +187,15 @@ resource securityLock 'Microsoft.Authorization/locks@2020-05-01' = if (environme
 // drift (e.g. someone deleting a Log Analytics workspace) can silently break
 // alerting and audit logging. ReadOnly prevents any changes without explicit
 // lock removal, which is a deliberate, auditable action.
-resource monitoringLock 'Microsoft.Authorization/locks@2020-05-01' = if (environment == 'prod') {
-  name: 'lock-monitoring-readonly'
+module monitoringLock 'rg-lock.bicep' = if (environment == 'prod') {
+  name: 'deploy-lock-monitoring'
   // index [4] = monitoring RG by convention (Log Analytics, dashboards, alerts)
   scope: resourceGroup(resourceGroupNames[4])
-  properties: {
+  params: {
+    lockName: 'lock-monitoring-readonly'
     // ReadOnly: prevents all write operations on the monitoring RG resources;
     // any changes require removing this lock first (creates an audit trail)
-    level: 'ReadOnly'
+    lockLevel: 'ReadOnly'
     notes: 'Monitoring workspace — read-only to prevent config drift'
   }
 }
