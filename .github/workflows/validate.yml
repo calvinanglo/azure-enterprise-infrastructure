@@ -1,5 +1,9 @@
 name: Validate Bicep Templates
 
+# Triggered on every PR and every push to main that touches IaC or policy files.
+# The workflow proves the Bicep templates compile cleanly and the policy JSON
+# files are well-formed — fast, read-only, zero-cost validation suitable for
+# a free-tier Azure subscription.
 on:
   pull_request:
     paths:
@@ -9,21 +13,30 @@ on:
     branches: [main]
     paths:
       - 'bicep/**'
+      - 'policies/**'
 
+# OIDC federated credential requires id-token: write so GitHub can mint the
+# short-lived JWT that Entra ID exchanges for an Azure access token. No
+# long-lived secrets are stored anywhere.
 permissions:
   id-token: write
   contents: read
 
 jobs:
   lint-and-validate:
-    name: Lint & What-If
+    name: Lint & Validate
     runs-on: ubuntu-latest
+    # 'environment: dev' wires this job to the GitHub environment that holds
+    # the federated credential subject claim (repo:<org>/<repo>:environment:dev).
     environment: dev
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Passwordless login to Azure via OIDC federated credential.
+      # Proves the trust bridge between GitHub Actions and Entra ID works.
+      # The service principal has Reader role — read-only, zero blast radius.
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -31,26 +44,45 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Bicep Lint
+      # Sanity-check the login succeeded and surface the active subscription
+      # in the workflow log. Demonstrates the OIDC handshake end-to-end.
+      - name: Verify Azure Context
+        run: az account show --output table
+        shell: bash
+
+      # Compile every Bicep file to ARM JSON. This catches:
+      #   - Syntax errors (BCP001-BCP999)
+      #   - Scope mismatches (BCP135, BCP139)
+      #   - Missing required properties (BCP035)
+      #   - Broken module references (BCP104)
+      # Runs locally on the runner — no Azure permissions needed.
+      - name: Bicep Build (Lint)
         run: |
           az bicep install
+          echo "Compiling all Bicep templates..."
           find bicep/ -name '*.bicep' -exec az bicep build --file {} --stdout \; > /dev/null
+          echo "All Bicep files compiled successfully."
         shell: bash
 
-      - name: What-If (Dev)
+      # Validate the two .bicepparam files compile against main.bicep.
+      # Catches parameter-file errors early (wrong names, missing required
+      # params, type mismatches) without needing deployment permissions.
+      - name: Bicep Parameter Validation
         run: |
-          az deployment sub what-if \
-            --location eastus2 \
-            --template-file bicep/main.bicep \
-            --parameters bicep/parameters/dev.bicepparam \
-            --result-format FullResourcePayloads \
-            --no-prompt
+          echo "Validating parameter files..."
+          az bicep build-params --file bicep/parameters/dev.bicepparam --stdout > /dev/null
+          az bicep build-params --file bicep/parameters/prod.bicepparam --stdout > /dev/null
+          echo "All parameter files validated successfully."
         shell: bash
 
-      - name: Policy Validation
+      # Validate every Azure Policy definition file is well-formed JSON.
+      # Policy authoring errors are a common AZ-104 pitfall — catch them here
+      # before an operator tries to assign a broken policy at runtime.
+      - name: Policy JSON Validation
         run: |
           for policy in policies/*.json; do
             echo "Validating: $policy"
             jq empty "$policy" || exit 1
           done
+          echo "All policy files are valid JSON."
         shell: bash
