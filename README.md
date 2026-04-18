@@ -100,7 +100,7 @@ azure-enterprise-infrastructure/
 │   ├── DEPLOYMENT-GUIDE.md           # 41-step IaC deployment guide (Bicep + PowerShell)
 │   ├── PORTAL-DEPLOYMENT-GUIDE.md    # Full portal-only GUI deployment guide (no CLI)
 │   ├── architecture/                 # Diagrams
-│   └── screenshots/                  # 21 Azure Portal verification screenshots
+│   └── screenshots/                  # 20 Azure Portal verification screenshots
 ├── .github/
 │   └── workflows/
 │       └── validate.yml              # CI: bicep lint + what-if on PR
@@ -180,8 +180,8 @@ Every resource deployed and verified in a live Azure subscription.
 |---|---|
 | ![Hub VNet Subnets](docs/screenshots/12-hub-vnet-subnets.png) | ![VNet Peering](docs/screenshots/15-vnet-peering.png) |
 | Hub VNet — AzureFirewallSubnet, AzureBastionSubnet, GatewaySubnet | 4 VNet Peerings (Hub ↔ Web, Hub ↔ App) |
-| ![Bastion Overview](docs/screenshots/14-bastion-overview.png) | ![Route Table UDR](docs/screenshots/18-route-table-udr.png) |
-| Azure Bastion — Secure VM Access (no public IPs) | User-Defined Routes — Force traffic through Firewall |
+| ![Bastion Overview](docs/screenshots/14-bastion-overview.png) | |
+| Azure Bastion — Secure VM Access (no public IPs) | |
 
 ### Network Security Groups
 | | |
