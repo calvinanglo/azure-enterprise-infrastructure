@@ -5,15 +5,20 @@ name: Validate Bicep Templates
 # files are well-formed — fast, read-only, zero-cost validation suitable for
 # a free-tier Azure subscription.
 on:
+  # workflow_dispatch lets you re-run the workflow manually from the Actions
+  # tab without pushing a commit — handy for debugging CI changes.
+  workflow_dispatch:
   pull_request:
     paths:
       - 'bicep/**'
       - 'policies/**'
+      - '.github/workflows/**'
   push:
     branches: [main]
     paths:
       - 'bicep/**'
       - 'policies/**'
+      - '.github/workflows/**'
 
 # OIDC federated credential requires id-token: write so GitHub can mint the
 # short-lived JWT that Entra ID exchanges for an Azure access token. No
