@@ -29,6 +29,8 @@ Covers all five AZ-104 exam domains at production depth.
 4. Complete identity verification (phone + credit card — you will NOT be charged)
 5. Click **Sign up** — you land on `https://portal.azure.com` with $200 credit
 
+![01-azure-portal-dashboard.png](screenshots/01-azure-portal-dashboard.png)
+
 ---
 
 ## Phase 1: Resource Groups
@@ -63,7 +65,7 @@ Repeat for these 4 additional resource groups (same region, same tags):
 
 **Verify**: Go to **Resource groups** — all 5 should appear with "East US 2" location.
 
-> Screenshot: `docs/screenshots/05-resource-groups.png`
+![05-resource-groups.png](screenshots/05-resource-groups.png)
 
 ---
 
@@ -194,6 +196,8 @@ Repeat for these 4 additional resource groups (same region, same tags):
 
 **Test**: Try creating a resource group in North Europe — it should fail with "RequestDisallowedByPolicy".
 
+![19-policy-assignments.png](screenshots/19-policy-assignments.png)
+
 ### Step 2.6 — Apply Resource Locks
 
 1. Go to **ent-rg-networking-prod** → **Locks** (left menu) → **Add**
@@ -238,7 +242,7 @@ Repeat for these 4 additional resource groups (same region, same tags):
 4. **Tags**: `Environment`=`prod`, `ManagedBy`=`Bicep`, `Project`=`enterprise-infra`, `CostCenter`=`IT-OPS-001`
 5. **Review + create** → **Create**
 
-> Screenshot: `docs/screenshots/12-hub-vnet-subnets.png`
+![12-hub-vnet-subnets.png](screenshots/12-hub-vnet-subnets.png)
 
 ### Step 3.2 — Create Web Spoke Virtual Network
 
@@ -253,6 +257,8 @@ Repeat for these 4 additional resource groups (same region, same tags):
 7. Tags (same as hub)
 8. **Create**
 
+![13-web-vnet-subnets.png](screenshots/13-web-vnet-subnets.png)
+
 ### Step 3.3 — Create App Spoke Virtual Network
 
 1. **Virtual networks** → **Create**
@@ -265,6 +271,8 @@ Repeat for these 4 additional resource groups (same region, same tags):
    - Range: `10.2.1.0/24`
 7. Tags (same as hub)
 8. **Create**
+
+![14b-app-vnet-subnets.png](screenshots/14b-app-vnet-subnets.png)
 
 ### Step 3.4 — Create VNet Peerings (Hub-Spoke)
 
@@ -292,7 +300,7 @@ Hub-to-App peering:
 
 **Verify**: Both peerings should show **Peering status: Connected** and **Fully Synchronized**.
 
-> Screenshot: `docs/screenshots/15-vnet-peering.png`
+![15-vnet-peering.png](screenshots/15-vnet-peering.png)
 
 ### Step 3.5 — Create Azure Firewall
 
@@ -338,7 +346,7 @@ After creation — add firewall rules:
 7. Public IP: **Create new** → name: `ent-bastion-pip-prod`
 8. **Tags** → **Review + create** → **Create** (takes ~5 minutes)
 
-> Screenshot: `docs/screenshots/14-bastion-overview.png`
+![14-bastion-overview.png](screenshots/14-bastion-overview.png)
 
 ### Step 3.7 — Create Network Security Groups (NSGs)
 
@@ -366,7 +374,7 @@ Associate NSG to subnet:
 2. Virtual network: `ent-vnet-web-prod`
 3. Subnet: `snet-web`
 
-> Screenshot: `docs/screenshots/16-nsg-web-rules.png`
+![16-nsg-web-rules.png](screenshots/16-nsg-web-rules.png)
 
 **App Tier NSG:**
 1. **Network security groups** → **Create**
@@ -386,7 +394,7 @@ Associate to subnet:
 1. **ent-nsg-app-prod** → **Subnets** → **Associate**
 2. VNet: `ent-vnet-app-prod`, Subnet: `snet-app`
 
-> Screenshot: `docs/screenshots/17-nsg-app-rules.png`
+![17-nsg-app-rules.png](screenshots/17-nsg-app-rules.png)
 
 ### Step 3.8 — Create Route Table (UDR)
 
@@ -410,7 +418,7 @@ Associate to subnets:
 2. VNet: `ent-vnet-web-prod`, Subnet: `snet-web` → **OK**
 3. Repeat: VNet: `ent-vnet-app-prod`, Subnet: `snet-app` → **OK**
 
-> Screenshot: `docs/screenshots/18-route-table-udr.png`
+![18-route-table-udr.png](screenshots/18-route-table-udr.png)
 
 ### Step 3.9 — Create Public Load Balancer (Web Tier)
 
@@ -446,8 +454,8 @@ Associate to subnets:
    - Backend pool: `web-backend-pool`
 8. **Tags** → **Review + create** → **Create**
 
-> Screenshot: `docs/screenshots/20-lb-web-overview.png`
-> Screenshot: `docs/screenshots/21-lb-web-rules.png`
+![20-lb-web-overview.png](screenshots/20-lb-web-overview.png)
+![21-lb-web-rules.png](screenshots/21-lb-web-rules.png)
 
 ### Step 3.10 — Create Internal Load Balancer (App Tier)
 
@@ -473,7 +481,7 @@ Associate to subnets:
    - Enable Floating IP: No
 6. **Tags** → **Review + create** → **Create**
 
-> Screenshot: `docs/screenshots/22-lb-app-internal.png`
+![22-lb-app-internal.png](screenshots/22-lb-app-internal.png)
 
 ### Step 3.11 — Create Public DNS Zone
 
@@ -493,8 +501,8 @@ Add record sets:
 | `@` | MX | 3600 | Priority: 10, `mail.example.com` |
 | `@` | TXT | 3600 | `v=spf1 include:spf.protection.outlook.com -all` |
 
-> Screenshot: `docs/screenshots/23-dns-zone-overview.png`
-> Screenshot: `docs/screenshots/24-dns-record-sets.png`
+![23-dns-zone-overview.png](screenshots/23-dns-zone-overview.png)
+![24-dns-record-sets.png](screenshots/24-dns-record-sets.png)
 
 ### Step 3.12 — Create Private DNS Zone
 
@@ -512,7 +520,7 @@ Add A record:
 1. **Record set** → **Add**
 2. Name: `app-lb`, Type: A, TTL: 3600, IP: (Internal LB frontend IP)
 
-> Screenshot: `docs/screenshots/24b-private-dns-zone.png`
+![24b-private-dns-zone.png](screenshots/24b-private-dns-zone.png)
 
 ---
 
@@ -557,8 +565,8 @@ Create blob containers:
 | `logs` | Private |
 | `config` | Private |
 
-> Screenshot: `docs/screenshots/25-storage-overview.png`
-> Screenshot: `docs/screenshots/26-storage-containers.png`
+![25-storage-overview.png](screenshots/25-storage-overview.png)
+![26-storage-containers.png](screenshots/26-storage-containers.png)
 
 ### Step 4.2 — Configure Lifecycle Management
 
@@ -586,7 +594,7 @@ Create blob containers:
 - Blob subtype: **Snapshots**
 - Condition: Created more than **90** days ago → **Delete the snapshot**
 
-> Screenshot: `docs/screenshots/27-storage-lifecycle.png`
+![27-storage-lifecycle.png](screenshots/27-storage-lifecycle.png)
 
 ---
 
@@ -612,7 +620,7 @@ Create blob containers:
    - Purge protection: **Enabled** (prevents permanent deletion even by admins)
 6. **Tags** → **Review + create** → **Create**
 
-> Screenshot: `docs/screenshots/28-keyvault-overview.png`
+![28-keyvault-overview.png](screenshots/28-keyvault-overview.png)
 
 ### Step 5.2 — Create User-Assigned Managed Identities
 
@@ -629,7 +637,9 @@ Create 3 managed identities that services will use instead of storing credential
 
 3. Fill in each, add tags, and **Create**
 
-> Screenshot: `docs/screenshots/35-managed-identity.png`
+![35-managed-identity.png](screenshots/35-managed-identity.png)
+
+![36-managed-identities-list.png](screenshots/36-managed-identities-list.png)
 
 ---
 
@@ -664,7 +674,7 @@ After creation — configure backup policies:
    - Yearly: **3** years (January, First Sunday)
 6. **Create**
 
-> Screenshot: `docs/screenshots/30-recovery-vault.png`
+![30-recovery-vault.png](screenshots/30-recovery-vault.png)
 
 ### Step 6.2 — Create Web Tier VM Scale Set
 
@@ -732,7 +742,7 @@ Repeat Step 6.2 with these changes:
 3. **Pricing tier**: Pay-as-you-go (default)
 4. **Tags** → **Review + create** → **Create**
 
-> Screenshot: `docs/screenshots/38-log-analytics.png`
+![38-log-analytics.png](screenshots/38-log-analytics.png)
 
 ### Step 7.2 — Configure Diagnostic Settings (All Resources)
 
