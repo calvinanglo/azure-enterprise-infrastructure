@@ -98,7 +98,7 @@ Complete start-to-finish walkthrough: from Azure free trial signup through full 
 7. You'll land on the Azure Portal: `https://portal.azure.com`
 
 > **Screenshot 01**: Azure Portal dashboard after signup showing "$200 credit remaining"
-> Save as: `docs/screenshots/01-azure-portal-dashboard.png`
+![01-azure-portal-dashboard.png](screenshots/01-azure-portal-dashboard.png)
 
 **Verify your subscription:**
 ```powershell
@@ -107,7 +107,6 @@ az account show --output table
 ```
 
 > **Screenshot 02**: Terminal showing `az account show` with "Free Trial" subscription
-> Save as: `docs/screenshots/02-subscription-free-trial.png`
 
 ---
 
@@ -145,7 +144,6 @@ winget install Microsoft.PowerShell
 ```
 
 > **Screenshot 03**: Terminal showing all tool versions (az, bicep, azcopy, pwsh)
-> Save as: `docs/screenshots/03-tool-versions.png`
 
 ---
 
@@ -185,7 +183,6 @@ $tenantDomain = "YOUR_TENANT.onmicrosoft.com"
 - Confirm all 10 users appear with correct departments
 
 > **Screenshot 04**: Entra ID → Users list showing all created users with departments
-> Save as: `docs/screenshots/04-entra-users.png`
 
 ---
 
@@ -220,10 +217,8 @@ $tenantDomain = "YOUR_TENANT.onmicrosoft.com"
 8. Save
 
 > **Screenshot 05a**: Security groups list showing all 7 groups
-> Save as: `docs/screenshots/05a-security-groups.png`
 
 > **Screenshot 05b**: Dynamic group rule editor with validation results
-> Save as: `docs/screenshots/05b-dynamic-group-rule.png`
 
 ---
 
@@ -239,7 +234,6 @@ Administrative Units scope user management to specific departments.
 6. Repeat for `AU-Development-prod` with Development users
 
 > **Screenshot 06**: Administrative Units list with members count
-> Save as: `docs/screenshots/06-administrative-units.png`
 
 ---
 
@@ -256,7 +250,6 @@ Administrative Units scope user management to specific departments.
 - Check the invitation email
 
 > **Screenshot 07**: User list showing guest user with "Guest" type badge
-> Save as: `docs/screenshots/07-guest-user.png`
 
 ---
 
@@ -287,7 +280,6 @@ Repeat for:
 - **Monitoring Reader Plus (prod)** — read metrics + manage alerts, deny action group changes
 
 > **Screenshot 08**: Custom roles list showing all 3 roles with assignable scopes
-> Save as: `docs/screenshots/08-custom-rbac-roles.png`
 
 ---
 
@@ -306,7 +298,6 @@ Repeat for:
 | sg-backup-operators-prod | Backup Contributor | ent-rg-compute-prod |
 
 > **Screenshot 09**: IAM → Role assignments showing all group-to-role mappings
-> Save as: `docs/screenshots/09-rbac-assignments.png`
 
 ---
 
@@ -341,10 +332,9 @@ az group delete -n test-policy-deny --yes --no-wait 2>$null
 ```
 
 > **Screenshot 10a**: Policy → Assignments showing all 5 policies
-> Save as: `docs/screenshots/10a-policy-assignments.png`
+![19-policy-assignments.png](screenshots/19-policy-assignments.png)
 
 > **Screenshot 10b**: Terminal showing policy deny error for wrong location
-> Save as: `docs/screenshots/10b-policy-deny-test.png`
 
 ---
 
@@ -371,7 +361,6 @@ az group delete -n ent-rg-networking-prod --yes
 ```
 
 > **Screenshot 11**: Resource group locks showing all 3 locks
-> Save as: `docs/screenshots/11-resource-locks.png`
 
 ---
 
@@ -388,13 +377,16 @@ az group delete -n ent-rg-networking-prod --yes
 - Hub VNet: `ent-vnet-hub-prod` (`10.0.0.0/16`)
 - Subnets: AzureFirewallSubnet, AzureBastionSubnet, GatewaySubnet, snet-management
 
+> **Verify**: All 5 resource groups created with proper tags
+![05-resource-groups.png](screenshots/05-resource-groups.png)
+
 **Verify in Portal:**
 1. Go to **ent-rg-networking-prod → ent-vnet-hub-prod**
 2. Click **Subnets** — verify all 4 subnets with correct CIDR ranges
 3. Click **Diagram** — see visual layout
 
 > **Screenshot 12**: Hub VNet → Subnets blade showing all 4 subnets with addresses
-> Save as: `docs/screenshots/12-hub-vnet-subnets.png`
+![12-hub-vnet-subnets.png](screenshots/12-hub-vnet-subnets.png)
 
 ---
 
@@ -409,10 +401,8 @@ az group delete -n ent-rg-networking-prod --yes
 3. Go to firewall policy → **Rules** → verify DNS + NTP rules
 
 > **Screenshot 13a**: Azure Firewall overview (provisioning state, IPs)
-> Save as: `docs/screenshots/13a-firewall-overview.png`
 
 > **Screenshot 13b**: Firewall policy rules showing DNS and NTP allow rules
-> Save as: `docs/screenshots/13b-firewall-rules.png`
 
 ---
 
@@ -423,7 +413,7 @@ az group delete -n ent-rg-networking-prod --yes
 2. Check: SKU = Basic, public IP assigned, connected to AzureBastionSubnet
 
 > **Screenshot 14**: Bastion overview showing SKU and connected VNet
-> Save as: `docs/screenshots/14-bastion-overview.png`
+![14-bastion-overview.png](screenshots/14-bastion-overview.png)
 
 ---
 
@@ -440,7 +430,11 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
 ```
 
 > **Screenshot 15**: VNet peering list — all 4 connections showing "Connected"
-> Save as: `docs/screenshots/15-vnet-peering.png`
+![15-vnet-peering.png](screenshots/15-vnet-peering.png)
+
+![13-web-vnet-subnets.png](screenshots/13-web-vnet-subnets.png)
+
+![14b-app-vnet-subnets.png](screenshots/14b-app-vnet-subnets.png)
 
 ---
 
@@ -461,10 +455,10 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
    - 4096: Deny-All
 
 > **Screenshot 16a**: Web NSG inbound rules in order
-> Save as: `docs/screenshots/16a-nsg-web-rules.png`
+![16-nsg-web-rules.png](screenshots/16-nsg-web-rules.png)
 
 > **Screenshot 16b**: App NSG inbound rules — only web tier allowed
-> Save as: `docs/screenshots/16b-nsg-app-rules.png`
+![17-nsg-app-rules.png](screenshots/17-nsg-app-rules.png)
 
 ---
 
@@ -478,7 +472,7 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
 3. Click **Subnets** — verify associated with snet-web and snet-app
 
 > **Screenshot 17**: Route table showing both routes with firewall next hop
-> Save as: `docs/screenshots/17-route-table-udr.png`
+![18-route-table-udr.png](screenshots/18-route-table-udr.png)
 
 ---
 
@@ -500,10 +494,12 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
 4. Load balancing rules: port 8080
 
 > **Screenshot 18a**: Public LB overview — frontend IP, backend pool, rules
-> Save as: `docs/screenshots/18a-public-lb.png`
+![20-lb-web-overview.png](screenshots/20-lb-web-overview.png)
+
+![21-lb-web-rules.png](screenshots/21-lb-web-rules.png)
 
 > **Screenshot 18b**: Internal LB overview — private frontend IP
-> Save as: `docs/screenshots/18b-internal-lb.png`
+![22-lb-app-internal.png](screenshots/22-lb-app-internal.png)
 
 ---
 
@@ -522,10 +518,12 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
 4. Verify `app-lb` A record → internal LB IP
 
 > **Screenshot 19a**: Public DNS zone with all record types visible
-> Save as: `docs/screenshots/19a-public-dns-records.png`
+![23-dns-zone-overview.png](screenshots/23-dns-zone-overview.png)
+
+![24-dns-record-sets.png](screenshots/24-dns-record-sets.png)
 
 > **Screenshot 19b**: Private DNS zone with internal A record
-> Save as: `docs/screenshots/19b-private-dns.png`
+![24b-private-dns-zone.png](screenshots/24b-private-dns-zone.png)
 
 ---
 
@@ -538,7 +536,6 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
 4. Storage + Log Analytics configured
 
 > **Screenshot 20**: Network Watcher → NSG flow logs showing both NSGs enabled
-> Save as: `docs/screenshots/20-nsg-flow-logs.png`
 
 ---
 
@@ -569,13 +566,10 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
    - Screenshot the full topology diagram
 
 > **Screenshot 21a**: IP Flow Verify showing "Access allowed" for web→app
-> Save as: `docs/screenshots/21a-ip-flow-verify.png`
 
 > **Screenshot 21b**: Next Hop showing firewall as next hop for internet traffic
-> Save as: `docs/screenshots/21b-next-hop.png`
 
 > **Screenshot 21c**: Network topology diagram
-> Save as: `docs/screenshots/21c-network-topology.png`
 
 ---
 
@@ -595,13 +589,12 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
 5. **Networking**: Default = Deny, Azure Services bypass
 
 > **Screenshot 22a**: Storage account overview — redundancy, security settings
-> Save as: `docs/screenshots/22a-storage-overview.png`
+![25-storage-overview.png](screenshots/25-storage-overview.png)
 
 > **Screenshot 22b**: Containers list
-> Save as: `docs/screenshots/22b-storage-containers.png`
+![26-storage-containers.png](screenshots/26-storage-containers.png)
 
 > **Screenshot 22c**: File share showing quota and access tier
-> Save as: `docs/screenshots/22c-file-share.png`
 
 ---
 
@@ -614,7 +607,7 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
    - `delete-old-versions`: Delete versions after 60d
 
 > **Screenshot 23**: Lifecycle management rules detail view
-> Save as: `docs/screenshots/23-lifecycle-rules.png`
+![27-storage-lifecycle.png](screenshots/27-storage-lifecycle.png)
 
 ---
 
@@ -640,10 +633,8 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
 3. Save
 
 > **Screenshot 24a**: SAS generation page with settings
-> Save as: `docs/screenshots/24a-sas-token.png`
 
 > **Screenshot 24b**: Stored access policy on container
-> Save as: `docs/screenshots/24b-stored-access-policy.png`
 
 ---
 
@@ -665,7 +656,6 @@ azcopy sync "C:\temp\data-folder" "https://<STORAGE>.blob.core.windows.net/app-d
 2. Confirm the uploaded file appears
 
 > **Screenshot 25**: Blob container showing uploaded file with metadata
-> Save as: `docs/screenshots/25-azcopy-upload.png`
 
 ---
 
@@ -685,7 +675,6 @@ az storage account keys renew -n <STORAGE_NAME> -g ent-rg-storage-prod --key key
 3. Confirm
 
 > **Screenshot 26**: Access keys blade showing rotation option
-> Save as: `docs/screenshots/26-key-rotation.png`
 
 ---
 
@@ -706,10 +695,12 @@ az keyvault secret set --vault-name $kvName --name "db-connection-string" --valu
 ```
 
 > **Screenshot 27a**: Key Vault overview — RBAC, soft delete, purge protection
-> Save as: `docs/screenshots/27a-keyvault-overview.png`
+![28-keyvault-overview.png](screenshots/28-keyvault-overview.png)
 
-> **Screenshot 27b**: Key Vault secrets list showing test secret
-> Save as: `docs/screenshots/27b-keyvault-secret.png`
+> **Verify**: Three user-assigned managed identities deployed in security RG
+![36-managed-identities-list.png](screenshots/36-managed-identities-list.png)
+
+![35-managed-identity.png](screenshots/35-managed-identity.png)
 
 ---
 
@@ -726,13 +717,10 @@ az keyvault secret set --vault-name $kvName --name "db-connection-string" --valu
    - Extensions: CustomScript (nginx), HealthExtension
 
 > **Screenshot 28a**: VMSS overview showing instance count and zones
-> Save as: `docs/screenshots/28a-vmss-web-overview.png`
 
 > **Screenshot 28b**: VMSS instances tab — each in a different zone
-> Save as: `docs/screenshots/28b-vmss-instances-zones.png`
 
 > **Screenshot 28c**: VMSS extensions list
-> Save as: `docs/screenshots/28c-vmss-extensions.png`
 
 ---
 
@@ -747,7 +735,6 @@ az keyvault secret set --vault-name $kvName --name "db-connection-string" --valu
    - Min: 2, Max: 10 (prod) / 4 (dev)
 
 > **Screenshot 29**: Autoscale configuration showing both rules
-> Save as: `docs/screenshots/29-autoscale-rules.png`
 
 ---
 
@@ -769,10 +756,8 @@ az webapp deployment slot swap -g ent-rg-compute-prod -n <WEBAPP_NAME> --slot st
 ```
 
 > **Screenshot 30a**: App Service overview — runtime, HTTPS, URL
-> Save as: `docs/screenshots/30a-app-service.png`
 
 > **Screenshot 30b**: Deployment slots showing production + staging
-> Save as: `docs/screenshots/30b-deployment-slots.png`
 
 ---
 
@@ -787,7 +772,6 @@ az webapp deployment slot swap -g ent-rg-compute-prod -n <WEBAPP_NAME> --slot st
 3. Click **Containers → Logs** — verify health check output
 
 > **Screenshot 31**: ACI container group showing running state and logs
-> Save as: `docs/screenshots/31-container-instance.png`
 
 ---
 
@@ -808,13 +792,10 @@ az webapp deployment slot swap -g ent-rg-compute-prod -n <WEBAPP_NAME> --slot st
    - OS: Linux, Gen2, TrustedLaunch
 
 > **Screenshot 32a**: Managed disk overview — size, type, encryption
-> Save as: `docs/screenshots/32a-managed-disk.png`
 
 > **Screenshot 32b**: Disk snapshot showing incremental + source disk
-> Save as: `docs/screenshots/32b-disk-snapshot.png`
 
 > **Screenshot 32c**: Compute Gallery with image definition
-> Save as: `docs/screenshots/32c-compute-gallery.png`
 
 ---
 
@@ -834,10 +815,9 @@ az webapp deployment slot swap -g ent-rg-compute-prod -n <WEBAPP_NAME> --slot st
 ```
 
 > **Screenshot 33a**: Recovery Services Vault → Backup policies
-> Save as: `docs/screenshots/33a-backup-policies.png`
+![30-recovery-vault.png](screenshots/30-recovery-vault.png)
 
 > **Screenshot 33b**: Backup items showing protected VMs
-> Save as: `docs/screenshots/33b-backup-items.png`
 
 ---
 
@@ -858,7 +838,6 @@ cat /etc/os-release         # Ubuntu 22.04
 ```
 
 > **Screenshot 34**: Bastion SSH session showing nginx running and health check
-> Save as: `docs/screenshots/34-bastion-ssh-session.png`
 
 ---
 
@@ -874,7 +853,7 @@ cat /etc/os-release         # Ubuntu 22.04
    - Daily cap: 10 GB
 
 > **Screenshot 35**: Log Analytics workspace overview — retention, daily cap
-> Save as: `docs/screenshots/35-log-analytics.png`
+![38-log-analytics.png](screenshots/38-log-analytics.png)
 
 ---
 
@@ -897,10 +876,8 @@ AzureActivity
 ```
 
 > **Screenshot 36a**: Diagnostic settings on Azure Firewall showing Log Analytics
-> Save as: `docs/screenshots/36a-diagnostic-settings.png`
 
 > **Screenshot 36b**: KQL query results in Log Analytics
-> Save as: `docs/screenshots/36b-kql-query-results.png`
 
 ---
 
@@ -916,10 +893,8 @@ AzureActivity
 4. Verify: `ent-ag-critical-prod` with email receiver
 
 > **Screenshot 37a**: Alert rules list showing all 3 alerts
-> Save as: `docs/screenshots/37a-alert-rules.png`
 
 > **Screenshot 37b**: Action group showing email receiver
-> Save as: `docs/screenshots/37b-action-group.png`
 
 ---
 
@@ -931,7 +906,6 @@ AzureActivity
 3. Go to **ent-law-prod → Solutions** → verify VMInsights installed
 
 > **Screenshot 38**: VM Insights overview showing monitored VMs
-> Save as: `docs/screenshots/38-vm-insights.png`
 
 ---
 
