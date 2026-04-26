@@ -280,6 +280,7 @@ Repeat for:
 - **Monitoring Reader Plus (prod)** — read metrics + manage alerts, deny action group changes
 
 > **Screenshot 08**: Custom roles list showing all 3 roles with assignable scopes
+![08-custom-rbac-roles.png](screenshots/08-custom-rbac-roles.png) (Subscription IAM blade — Roles tab)
 
 ---
 
@@ -415,6 +416,10 @@ az group delete -n ent-rg-networking-prod --yes
 > **Screenshot 14**: Bastion overview showing SKU and connected VNet
 ![14-bastion-overview.png](screenshots/14-bastion-overview.png)
 
+![13a-firewall-overview.png](screenshots/13a-firewall-overview.png) (Azure Firewall — Private IP 10.0.1.4 matches the route table next-hop)
+
+![13b-firewall-rules.png](screenshots/13b-firewall-rules.png) (Firewall policy — 2 network rules, 0 IP groups, threat intel: Deny)
+
 ---
 
 ### 15. Deploy Spoke VNets + Peering
@@ -459,6 +464,8 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
 
 > **Screenshot 16b**: App NSG inbound rules — only web tier allowed
 ![17-nsg-app-rules.png](screenshots/17-nsg-app-rules.png)
+
+![19b-nsg-management-rules.png](screenshots/19b-nsg-management-rules.png) (Management NSG — Allow-Bastion + Deny-All)
 
 ---
 
@@ -524,6 +531,10 @@ az network vnet peering list -g ent-rg-networking-prod --vnet-name ent-vnet-hub-
 
 > **Screenshot 19b**: Private DNS zone with internal A record
 ![24b-private-dns-zone.png](screenshots/24b-private-dns-zone.png)
+
+![32b-privatelink-dns-zone.png](screenshots/32b-privatelink-dns-zone.png) (Private Link DNS zone for storage PE)
+
+![32c-service-endpoints.png](screenshots/32c-service-endpoints.png) (App spoke subnets: snet-app workload + snet-pe for PEs)
 
 ---
 
@@ -854,6 +865,10 @@ cat /etc/os-release         # Ubuntu 22.04
 
 > **Screenshot 35**: Log Analytics workspace overview — retention, daily cap
 ![38-log-analytics.png](screenshots/38-log-analytics.png)
+
+![38b-vm-insights-solution.png](screenshots/38b-vm-insights-solution.png) (VM Insights solution overview)
+
+![37-metric-alert.png](screenshots/37-metric-alert.png) (CPU > 85% metric alert with action group binding)
 
 ---
 

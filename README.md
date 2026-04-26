@@ -184,12 +184,18 @@ Every resource deployed and verified in a live Azure subscription.
 | Azure Bastion — Secure VM Access (no public IPs) | User-Defined Routes — Force traffic through Firewall |
 | ![Web Spoke VNet Subnets](docs/screenshots/13-web-vnet-subnets.png) | ![App Spoke VNet Subnets](docs/screenshots/14b-app-vnet-subnets.png) |
 | Web Spoke VNet — snet-web (10.1.1.0/24) | App Spoke VNet — snet-app (10.2.1.0/24) |
+| ![Azure Firewall](docs/screenshots/13a-firewall-overview.png) | ![Firewall Policy](docs/screenshots/13b-firewall-rules.png) |
+| Azure Firewall — Standard SKU, private IP 10.0.1.4 (UDR next-hop) | Firewall Policy — 2 network rules (DNS + NTP allow) |
+| ![Service Endpoints](docs/screenshots/32c-service-endpoints.png) | |
+| App Spoke subnets — snet-app (workload) + snet-pe (PE-only, 10.2.2.0/28) | |
 
 ### Network Security Groups
 | | |
 |---|---|
 | ![NSG Web Rules](docs/screenshots/16-nsg-web-rules.png) | ![NSG App Rules](docs/screenshots/17-nsg-app-rules.png) |
 | Web Tier NSG — Allow HTTP/HTTPS inbound | App Tier NSG — Allow traffic from web subnet only |
+| ![NSG Management Rules](docs/screenshots/19b-nsg-management-rules.png) | |
+| Management NSG — Allow Bastion SSH/RDP, Deny all else | |
 
 ### Load Balancers
 | | |
@@ -204,8 +210,8 @@ Every resource deployed and verified in a live Azure subscription.
 |---|---|
 | ![DNS Zone Overview](docs/screenshots/23-dns-zone-overview.png) | ![DNS Record Sets](docs/screenshots/24-dns-record-sets.png) |
 | Public DNS Zone — A, CNAME, MX, TXT records | Record Sets — Full DNS configuration |
-| ![Private DNS Zone](docs/screenshots/24b-private-dns-zone.png) | |
-| Private DNS Zone — Internal name resolution | |
+| ![Private DNS Zone](docs/screenshots/24b-private-dns-zone.png) | ![Private Link DNS Zone](docs/screenshots/32b-privatelink-dns-zone.png) |
+| Private DNS Zone — Internal name resolution | privatelink.blob.core.windows.net — Auto-managed for storage PE |
 
 ### Storage
 | | |
@@ -221,7 +227,9 @@ Every resource deployed and verified in a live Azure subscription.
 | ![Key Vault Overview](docs/screenshots/28-keyvault-overview.png) | ![Managed Identity](docs/screenshots/35-managed-identity.png) |
 | Key Vault — RBAC mode, purge protection enabled | User-Assigned Managed Identity (automation) |
 | ![All Managed Identities](docs/screenshots/36-managed-identities-list.png) | ![Policy Assignments](docs/screenshots/19-policy-assignments.png) |
-| 3 Managed Identities — automation, backup, monitoring (least privilege) | Azure Policy — Restrict deployments to approved regions |
+| 3 Managed Identities — automation, backup, monitoring (least privilege) | Azure Policy — 5 policy assignments enforced subscription-wide |
+| ![Custom RBAC Roles](docs/screenshots/08-custom-rbac-roles.png) | |
+| Subscription IAM — Roles tab (3 custom roles: VM Operator, Network Viewer, Monitoring Reader Plus) | |
 
 ### Compute & Backup
 | | |
@@ -232,8 +240,10 @@ Every resource deployed and verified in a live Azure subscription.
 ### Monitoring
 | | |
 |---|---|
-| ![Log Analytics](docs/screenshots/38-log-analytics.png) | |
-| Log Analytics Workspace — Diagnostics, alerts, VM Insights | |
+| ![Log Analytics](docs/screenshots/38-log-analytics.png) | ![Metric Alert](docs/screenshots/37-metric-alert.png) |
+| Log Analytics Workspace — Diagnostics, alerts, VM Insights | Metric Alert — CPU > 85% over 15 min, multi-receiver action group |
+| ![VM Insights Solution](docs/screenshots/38b-vm-insights-solution.png) | |
+| VM Insights Solution — Per-VM performance + dependency map | |
 
 ---
 

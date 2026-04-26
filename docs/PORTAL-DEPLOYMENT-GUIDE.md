@@ -160,6 +160,8 @@ Repeat for these 4 additional resource groups (same region, same tags):
 - Not Actions: `Microsoft.Insights/actionGroups/write`
 - Assignable scopes: `/subscriptions/{your-sub-id}/resourceGroups/ent-rg-monitoring-prod`
 
+![08-custom-rbac-roles.png](screenshots/08-custom-rbac-roles.png)
+
 ### Step 2.4 — Assign RBAC Roles to Groups
 
 1. **Subscriptions** → your subscription → **Access control (IAM)** → **Add** → **Add role assignment**
@@ -335,6 +337,10 @@ After creation — add firewall rules:
 
 **Note the Firewall private IP** (found on the Firewall overview page) — you need this for route tables.
 
+![13a-firewall-overview.png](screenshots/13a-firewall-overview.png)
+
+![13b-firewall-rules.png](screenshots/13b-firewall-rules.png)
+
 ### Step 3.6 — Create Azure Bastion
 
 1. Portal → **Bastions** → **Create**
@@ -395,6 +401,8 @@ Associate to subnet:
 2. VNet: `ent-vnet-app-prod`, Subnet: `snet-app`
 
 ![17-nsg-app-rules.png](screenshots/17-nsg-app-rules.png)
+
+![19b-nsg-management-rules.png](screenshots/19b-nsg-management-rules.png) (Management NSG with Allow-Bastion-Inbound + Deny-All)
 
 ### Step 3.8 — Create Route Table (UDR)
 
@@ -521,6 +529,10 @@ Add A record:
 2. Name: `app-lb`, Type: A, TTL: 3600, IP: (Internal LB frontend IP)
 
 ![24b-private-dns-zone.png](screenshots/24b-private-dns-zone.png)
+
+![32b-privatelink-dns-zone.png](screenshots/32b-privatelink-dns-zone.png) (auto-managed `privatelink.blob.core.windows.net` zone for the storage Private Endpoint)
+
+![32c-service-endpoints.png](screenshots/32c-service-endpoints.png) (App spoke subnets — `snet-app` workload + `snet-pe` dedicated PE subnet)
 
 ---
 
@@ -743,6 +755,10 @@ Repeat Step 6.2 with these changes:
 4. **Tags** → **Review + create** → **Create**
 
 ![38-log-analytics.png](screenshots/38-log-analytics.png)
+
+![38b-vm-insights-solution.png](screenshots/38b-vm-insights-solution.png) (VM Insights solution linked to the workspace)
+
+![37-metric-alert.png](screenshots/37-metric-alert.png) (CPU > 85% metric alert with multi-receiver action group)
 
 ### Step 7.2 — Configure Diagnostic Settings (All Resources)
 
