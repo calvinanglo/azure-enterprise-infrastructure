@@ -1014,6 +1014,7 @@ az network nsg rule show -g ent-rg-networking-prod --nsg-name ent-nsg-app-prod -
 ```
 
 > **Screenshot 42**: ASG list + NSG rule showing ASG references in source/destination
+![31-application-security-groups.png](screenshots/31-application-security-groups.png)
 
 ---
 
@@ -1033,7 +1034,10 @@ az keyvault update -g ent-rg-security-prod -n ent-kv-prod-x7m2k1 --public-networ
 ```
 
 > **Screenshot 43a**: Storage Account → Networking → publicNetworkAccess = Disabled, PE shown
+![32-storage-private-endpoint.png](screenshots/32-storage-private-endpoint.png)
+
 > **Screenshot 43b**: Key Vault → Networking → publicNetworkAccess = Disabled, PE shown
+![33-keyvault-private-endpoint.png](screenshots/33-keyvault-private-endpoint.png)
 
 ---
 
@@ -1063,6 +1067,7 @@ az network vnet-gateway root-cert create -g ent-rg-networking-prod --gateway-nam
 ```
 
 > **Screenshot 45**: VM → Disks blade showing encryption: Customer-Managed (Azure)
+![35b-disk-encryption-status.png](screenshots/35b-disk-encryption-status.png) (Key Vault Keys list with KEK `ent-kek-vmdisk-prod`)
 
 ---
 
@@ -1082,10 +1087,16 @@ az network vnet-gateway root-cert create -g ent-rg-networking-prod --gateway-nam
 az security pricing list --query "[].{plan:name, tier:pricingTier}" -o table
 ```
 
-> **Screenshot 46a**: Conditional Access policy in report-only mode
-> **Screenshot 46b**: Custom security attribute set 'WorkforcePartition' with 3 values
+> **Screenshot 46a**: Conditional Access policy blade (P1 license required for actual policy creation)
+![02-conditional-access.png](screenshots/02-conditional-access.png)
+
+> **Screenshot 46b**: Custom security attribute set — requires Entra ID P1, not deployed in free trial
+
 > **Screenshot 46c**: Management group hierarchy (root → prod → subscription)
-> **Screenshot 46d**: Defender for Cloud secure score (after 24h)
+![03-management-group-hierarchy.png](screenshots/03-management-group-hierarchy.png)
+
+> **Screenshot 46d**: Defender for Cloud overview / secure score
+![04-defender-secure-score.png](screenshots/04-defender-secure-score.png)
 
 ---
 
@@ -1105,8 +1116,13 @@ az monitor action-group show -g ent-rg-monitoring-prod -n ent-ag-critical-prod -
 ```
 
 > **Screenshot 47a**: Backup policy with daily/weekly/monthly/yearly tiers
-> **Screenshot 47b**: Operations workbook with 4 KQL panels rendering
-> **Screenshot 47c**: Action group with 4 receiver types
+![39-backup-multi-tier-retention.png](screenshots/39-backup-multi-tier-retention.png)
+
+> **Screenshot 47b**: Operations workbook resource (click "Open Workbook" to see 4 KQL panels)
+![40-monitor-workbook.png](screenshots/40-monitor-workbook.png)
+
+> **Screenshot 47c**: Action group with 4 receiver types (2 emails + webhook + Azure App push)
+![41-action-group-receivers.png](screenshots/41-action-group-receivers.png)
 
 ---
 

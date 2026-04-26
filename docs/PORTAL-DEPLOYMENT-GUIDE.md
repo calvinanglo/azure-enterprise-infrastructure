@@ -853,7 +853,7 @@ CLI alternative: run `scripts/configure-conditional-access.ps1` after `Connect-M
 
 CLI alternative: run `scripts/define-custom-security-attributes.ps1`.
 
-> Screenshot: `screenshots/06-custom-security-attributes.png`
+> Screenshot pending — Custom Security Attributes require Microsoft Entra ID P1 (not included in free trial). Bicep code + setup script ready in repo for when license is upgraded.
 
 ---
 
@@ -1064,7 +1064,7 @@ Private endpoints need their own subnet with PE network policies disabled.
 7. **Save**
 8. **Download VPN client** to test (Windows native VPN client uses SSTP)
 
-> Screenshot: `screenshots/42-vpn-gateway-overview.png`
+> Screenshot pending — VPN Gateway Basic SKU was disabled in main.bicep to fit free-trial Public IP quota (3 max, hub already uses 2). Bicep module `vpn-gateway.bicep` ready to enable after quota increase.
 
 ---
 
@@ -1108,7 +1108,7 @@ Private endpoints need their own subnet with PE network policies disabled.
 **Verify:**
 - Container detail page header shows "Immutable storage: 30 days (unlocked)"
 
-> Screenshot: `screenshots/34-blob-immutability-policy.png`
+> Screenshot pending — container deep-link to Access Policy blade requires runtime etag (not URL-addressable). Container `compliance-archive` IS deployed with 30-day immutability policy — verify via az CLI: `az storage container immutability-policy show --account-name entstprodjtijk6lp --container-name compliance-archive`
 
 ---
 
@@ -1144,6 +1144,8 @@ Private endpoints need their own subnet with PE network policies disabled.
 7. Set expiration date: leave default (or 1 year if compliance requires rotation)
 8. **Create**
 9. Open the key → **Properties** → ensure **Permitted operations** includes `wrapKey` and `unwrapKey` (default is all operations)
+
+> Screenshot: `screenshots/35b-disk-encryption-status.png` (Key Vault → Keys list with `ent-kek-vmdisk-prod` Enabled)
 
 ### Step 11.2 — Enable disk encryption flag on Key Vault
 
@@ -1251,7 +1253,7 @@ Private endpoints need their own subnet with PE network policies disabled.
 14. Region: East US 2
 15. **Apply**
 
-> Screenshot pending — workbook is deployed (resource ID `80e04521-...`) but capturing it requires opening the workbook directly via Monitor → Workbooks → ent-workbook-ops-prod.
+> Screenshot: `screenshots/40-monitor-workbook.png` (workbook resource overview — click "Open Workbook" in portal to view the 4 KQL panels rendering)
 
 ---
 
