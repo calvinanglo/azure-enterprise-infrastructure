@@ -23,12 +23,34 @@ param tags object
 // Resource ID of the Log Analytics Workspace that receives all diagnostic data
 param logAnalyticsWorkspaceId string
 
+// Toggle for public network access. When private endpoints are deployed, set
+// this to 'Disabled' so the vault is only reachable from in-VNet workloads.
+// Default 'Disabled' enforces the secure-by-default posture; set to 'Enabled'
+// only for dev/test scenarios that lack PE infrastructure.
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param publicNetworkAccess string = 'Disabled'
+
+// Allow ADE (Azure Disk Encryption) to retrieve the key encryption key (KEK)
+// from this vault for unwrapping data encryption keys at VM boot.
+// Set to true when this vault stores the KEK used by enable-disk-encryption.ps1.
+param enableForDiskEncryption bool = true
+
+// existingKeyVaultName: optional override for the vault name. Same pattern as
+// the storage module — supply this when the vault was created outside Bicep
+// so the deployment updates it in place instead of creating a duplicate.
+param existingKeyVaultName string = ''
+
 // ── Variables ───────────────────────────────────────────────────────────────
 
 // Key Vault names must be globally unique, 3–24 chars, alphanumeric + hyphens.
 // uniqueString() produces a deterministic 13-char hash of the resource group ID,
 // ensuring re-deployments get the same name without naming collisions across tenants.
-var keyVaultName = '${orgPrefix}-kv-${environment}-${uniqueString(resourceGroup().id)}'
+// Pin to the existing vault name when supplied; otherwise generate a fresh
+// globally-unique name from orgPrefix + uniqueString hash.
+var keyVaultName = empty(existingKeyVaultName) ? '${orgPrefix}-kv-${environment}-${uniqueString(resourceGroup().id)}' : existingKeyVaultName
 
 // ── Key Vault ──────────────────────────────────────────────────────────────
 
@@ -63,19 +85,26 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enabledForDeployment: true
     // Allows ARM template deployments to retrieve secrets during resource provisioning
     enabledForTemplateDeployment: true
-    // Disk encryption via Azure Disk Encryption (ADE) does NOT use Key Vault key
-    // wrapping in this deployment; set true only if using ADE with customer-managed keys
-    enabledForDiskEncryption: false
-    // Public network access is enabled here for initial deployment convenience.
-    // In production, restrict using firewall rules (IP allowlists) or Private Endpoints
-    publicNetworkAccess: 'Enabled'            // Restrict via firewall rules in prod
+    // Allow Azure Disk Encryption to retrieve the KEK (key encryption key)
+    // stored in this vault. ADE wraps the per-VM data encryption key with the
+    // KEK so VM disks can be unsealed at boot using the vault's authority.
+    // Required when this vault is the KEK source for enable-disk-encryption.ps1.
+    enabledForDiskEncryption: enableForDiskEncryption
+    // Default: 'Disabled'. With private endpoints deployed, the vault is only
+    // reachable from in-VNet workloads via the PE. Public DNS still resolves
+    // to a public IP but firewall rules drop the traffic. This is the
+    // secure-by-default posture per Azure Security Benchmark.
+    publicNetworkAccess: publicNetworkAccess
     networkAcls: {
-      // 'Allow' permits all traffic not matched by firewall rules; tighten to 'Deny'
-      // and add explicit IP rules / VNet service endpoints after initial deployment
-      defaultAction: 'Allow'                  // Tighten after initial deployment
-      // 'AzureServices' allows trusted Microsoft first-party services (ARM, Azure
-      // Backup, Azure Monitor, etc.) to bypass the network ACL even when defaultAction
-      // is set to 'Deny'
+      // 'Deny' enforces the lockdown — only traffic from VNets explicitly
+      // listed in virtualNetworkRules (or the AzureServices bypass) can reach
+      // the vault. Combined with publicNetworkAccess: 'Disabled', this is
+      // belt-and-suspenders security.
+      defaultAction: 'Deny'
+      // 'AzureServices' allows trusted Microsoft first-party services (Azure
+      // Backup, ARM template deployments, Defender for Cloud, etc.) to bypass
+      // the deny rule. Without this, ARM-driven secret retrieval during
+      // deployments would fail.
       bypass: 'AzureServices'
     }
   }

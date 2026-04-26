@@ -49,11 +49,11 @@ Enterprise-grade Azure infrastructure built for a live production environment. T
 
 | Domain | Components Deployed | Weight |
 |--------|-------------------|--------|
-| **Identity & Governance** | Entra ID bulk users, static + dynamic groups, administrative units, guest invite, managed identities, custom RBAC roles (3), Azure Policy (5), resource locks, tag enforcement, app registration + OIDC | 15-20% |
-| **Storage** | Storage account (blob + files), lifecycle management (cool → archive → delete), SAS tokens, stored access policies, AzCopy, key rotation, blob versioning, soft delete, change feed, private endpoint, Key Vault (RBAC + purge protection) | 15-20% |
-| **Compute** | VM Scale Sets (2, zonal), autoscale, App Service + deployment slots, Azure Container Instance, Container Registry, managed disks, snapshots, Compute Gallery (golden images), Recovery Services Vault + backup policies, custom script extensions, Bastion SSH | 20-25% |
-| **Networking** | Hub-spoke VNets (3), VNet peering (4), Azure Firewall + policy, Bastion, NSGs (3), UDRs, public + internal LBs, Azure DNS (public + private, A/CNAME/MX/TXT/alias records), Network Watcher, NSG flow logs + Traffic Analytics, IP flow verify, next hop | 25-30% |
-| **Monitoring** | Log Analytics, diagnostic settings on every resource, metric alerts (CPU, availability), log alerts (NSG deny spike), action groups, VM Insights, KQL queries | 10-15% |
+| **Identity & Governance** | Entra ID bulk users, static + dynamic groups, administrative units, guest invite, managed identities, custom RBAC roles (3), Azure Policy (5), resource locks, tag enforcement, app registration + OIDC, **Conditional Access (untrusted-IP MFA)**, **custom security attributes (WorkforcePartition)**, **Management Group hierarchy (2-tier)**, **Microsoft Defender for Cloud (Free tier baseline)** | 15-20% |
+| **Storage** | Storage account (blob + files), lifecycle management (cool → archive → delete), SAS tokens, stored access policies, AzCopy, key rotation, blob versioning, soft delete, change feed, **Private Endpoint + private DNS zone**, **service endpoints**, **blob immutability (time-based)**, Key Vault (RBAC + purge protection + **Private Endpoint**) | 15-20% |
+| **Compute** | VM Scale Sets (2, zonal), autoscale, App Service + deployment slots, Azure Container Instance, Container Registry, managed disks, snapshots, Compute Gallery (golden images), Recovery Services Vault + backup policies (**daily/weekly/monthly/yearly**), custom script extensions, Bastion SSH, **Azure Disk Encryption with Key Vault KEK** | 20-25% |
+| **Networking** | Hub-spoke VNets (3), VNet peering (4), Azure Firewall + policy, Bastion, NSGs (3 with **ASG-based rules**), **3 Application Security Groups**, UDRs, public + internal LBs, Azure DNS (public + private, A/CNAME/MX/TXT/alias records), Network Watcher (**Connection Troubleshoot, IP Flow Verify, Next Hop**), NSG flow logs + Traffic Analytics, **VPN Gateway (Basic SKU, P2S)** | 25-30% |
+| **Monitoring** | Log Analytics, diagnostic settings on every resource, metric alerts (CPU, availability), log alerts (NSG deny spike), action groups (**email + SMS + webhook + Azure App Push**), VM Insights, KQL queries, **Operations Workbook (4 KQL panels)** | 10-15% |
 
 ---
 

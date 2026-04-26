@@ -138,6 +138,36 @@ resource vmBackupPolicy 'Microsoft.RecoveryServices/vaults/backupPolicies@2023-0
           durationType: 'Months'
         }
       }
+      // Yearly retention: completes the GFS (Grandfather-Father-Son) backup
+      // pattern. One recovery point per year is preserved for long-term audit
+      // and regulatory needs (SOX 7-year, GDPR right-to-erasure exceptions,
+      // financial-services records retention).
+      // AZ-104 exam tip: when multiple retention rules overlap, the LONGEST
+      // retention always wins — a daily backup that is also the first Sunday
+      // of January is kept for the yearly retention period, not the daily one.
+      yearlySchedule: {
+        // 'Weekly' format selects the yearly recovery point by month + week +
+        // day combination, providing a stable annual snapshot regardless of
+        // the calendar date the first Sunday falls on.
+        retentionScheduleFormatType: 'Weekly'
+        // January is conventional for yearly retention because most fiscal
+        // and compliance reporting periods end on Dec 31, so a Jan snapshot
+        // captures end-of-year state for the prior fiscal year.
+        monthsOfYear: ['January']
+        retentionScheduleWeekly: {
+          daysOfTheWeek: ['Sunday']
+          weeksOfTheMonth: ['First']
+        }
+        retentionTimes: ['2024-01-01T02:00:00Z']
+        retentionDuration: {
+          // Prod: 5-year yearly retention — covers most multi-year audit cycles
+          //   without committing to the full 7-year SOX horizon (which would
+          //   require ~$15/year in vault storage per VM).
+          // Non-prod: 1-year retention — minimal long-term archive for dev/test.
+          count: environment == 'prod' ? 5 : 1
+          durationType: 'Years'
+        }
+      }
     }
     // Backup job scheduling is calculated in this timezone. 'Eastern Standard Time'
     // = UTC-5 (EST) / UTC-4 (EDT). The scheduleRunTimes value is in UTC, but this

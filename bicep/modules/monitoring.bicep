@@ -141,28 +141,194 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
     // useful for planned maintenance windows to prevent alert storms.
 
     emailReceivers: [
-      // emailReceivers: Array of email notification targets.
-      // AZ-104: Email is the most common action type; combine with SMS for
-      // on-call pages or with a webhook to forward into a ticketing system.
+      // Primary infrastructure team distribution list — receives every alert
+      // routed to this action group. Use a shared DL not personal mailboxes
+      // so on-call rotations are managed in AD/email admin, not in IaC.
       {
         name: 'InfraTeam'
-        // Logical label for this receiver — appears in alert notification payloads
-        // and in the portal UI. Naming by team role (not individual) supports
-        // rotation without changing IaC.
-
         emailAddress: 'infra-alerts@company.com'
-        // Distribution list email address. Using a DL rather than individual
-        // addresses means adding/removing people is an AD/email admin action,
-        // not an infrastructure deployment.
-
         useCommonAlertSchema: true
-        // AZ-104: The Common Alert Schema standardises the JSON payload format
-        // across ALL alert types (metric, log, activity log, smart detection).
-        // This means downstream webhook handlers, Logic Apps, and runbooks only
-        // need to parse one schema. Strongly recommended for any new deployment.
-        // Setting false uses the legacy per-alert-type schema format.
+      }
+      // Secondary security team receiver — duplicates notifications for any
+      // alert that may have a security implication (NSG deny spike, Defender
+      // detections wired to this action group via Microsoft.Security alerts).
+      // Multiple email receivers on one action group is the standard pattern
+      // for routing a single alert to multiple stakeholders in parallel.
+      {
+        name: 'SecurityOpsTeam'
+        emailAddress: 'secops-alerts@company.com'
+        useCommonAlertSchema: true
       }
     ]
+    // SMS receivers — DISABLED: Azure rejects North American test numbers
+    // (555 prefix) with PhoneNumberIsNotValid. To enable SMS alerting,
+    // uncomment and substitute a real, dialable number — Azure validates
+    // against telephony patterns at deploy time so placeholders won't fly.
+    //
+    // smsReceivers: [
+    //   {
+    //     name: 'OnCallPager'
+    //     countryCode: '1'
+    //     phoneNumber: '<real-number-without-formatting>'
+    //   }
+    // ]
+    // Webhook receivers — forward the alert payload to an external endpoint
+    // (ServiceNow, PagerDuty, Slack, custom Function App). The receiver gets
+    // the Common Alert Schema JSON for parsing.
+    webhookReceivers: [
+      {
+        name: 'IncidentPlatform'
+        // Placeholder webhook URL — in production, point to a pre-deployed
+        // Azure Function, Logic App, or third-party SaaS endpoint (PagerDuty,
+        // ServiceNow, Slack). Azure validates that the URL is well-formed
+        // and reachable; non-resolvable hosts (.invalid TLD, .test, etc.)
+        // are rejected with WebhookServiceUriBlocked, so we use a publicly
+        // resolvable placeholder host that returns 404 (still valid for the
+        // schema check — Azure only verifies DNS resolution at create-time).
+        serviceUri: 'https://webhook.site/00000000-0000-0000-0000-000000000000'
+        useCommonAlertSchema: true
+        // false = legacy auth header style; true = Azure AD bearer token.
+        // Bearer auth requires the receiving endpoint to be configured with
+        // an Azure AD app registration that trusts this action group.
+        useAadAuth: false
+      }
+    ]
+    // Azure App push receivers — sends a push notification to the Azure mobile
+    // app for engineers who carry the app on their phone. Free, requires
+    // engineers to be signed into the Azure mobile app on a registered device.
+    azureAppPushReceivers: [
+      {
+        name: 'OnCallMobileApp'
+        emailAddress: 'oncall-engineer@company.com'
+      }
+    ]
+  }
+}
+
+// ── Operations Workbook ────────────────────────────────────────────────────
+// AZ-104 Context: Azure Monitor Workbooks are interactive dashboards built on
+// KQL queries. Unlike static "Dashboards" they support parameter prompts,
+// drill-downs, time-range pickers, and mixed visualisations (charts, grids,
+// metrics tiles). Workbooks are the recommended way to consolidate KQL views
+// for a workload because they're version-controlled as JSON, can be shared
+// via the gallery, and support templating across environments.
+//
+// This workbook surfaces 4 operational health views in one place:
+//   1. Firewall denies by source IP (last 24h)
+//   2. NSG flow top talkers (top 20 source IPs by bytes)
+//   3. Backup job status grid (success/failed/in-progress per protected item)
+//   4. VMSS autoscale activity timeline
+
+resource opsWorkbook 'Microsoft.Insights/workbooks@2022-04-01' = {
+  // Workbook resource names are GUIDs by convention. guid() generates a
+  // deterministic GUID from the input strings so repeat deployments produce
+  // the same workbook resource (idempotent).
+  name: guid(resourceGroup().id, 'workbook-ops', environment)
+  location: location
+  tags: tags
+  // Workbook display name and serialized template are stored on the resource;
+  // the kind property must be 'shared' for tenant-visible workbooks (vs 'user'
+  // for private workbooks tied to a single user account).
+  kind: 'shared'
+  properties: {
+    // Display name shown in the Workbooks gallery. Includes environment so
+    // operators can distinguish prod/dev workbooks at a glance.
+    displayName: '${orgPrefix}-workbook-ops-${environment}'
+    // Workbook category appears as a filter tab in the gallery. 'sentinel'
+    // groups it with security-oriented workbooks; use 'workbook' for general
+    // operations dashboards. We use 'workbook' to keep ops separate from sec.
+    category: 'workbook'
+    // The workbook payload is a JSON document describing the panel layout,
+    // KQL queries, parameters, and visualisations. We embed it inline here
+    // for portability — large workbooks are usually loaded from an external
+    // .workbook JSON file via loadTextContent().
+    serializedData: string({
+      version: 'Notebook/1.0'
+      items: [
+        // Header text panel — gives the workbook a clear title and purpose.
+        {
+          type: 1  // type 1 = markdown text block
+          content: {
+            json: '## Operations Health Dashboard\nFour-panel KQL view: firewall denies, top talkers, backup jobs, VMSS scale events.'
+          }
+          name: 'header'
+        }
+        // Panel 1: Firewall denies by source IP (top 20, last 24 hours).
+        {
+          type: 3  // type 3 = query block
+          content: {
+            version: 'KqlItem/1.0'
+            // KQL query: pulls Azure Firewall network rule denies from the
+            // AZFWNetworkRule diagnostic log table, filters to denied flows,
+            // then aggregates by source IP for ranking.
+            query: 'AzureDiagnostics\n| where Category == "AzureFirewallNetworkRule"\n| where TimeGenerated > ago(24h)\n| where msg_s has "Deny"\n| extend SourceIP = extract("from ([0-9.]+):", 1, msg_s)\n| summarize DenyCount = count() by SourceIP\n| top 20 by DenyCount desc'
+            size: 0  // 0 = small, 1 = medium, 4 = full width
+            timeContext: { durationMs: 86400000 }  // 24h window
+            queryType: 0  // KQL query against Log Analytics
+            resourceType: 'microsoft.operationalinsights/workspaces'
+            // Render as a sortable bar chart (visualization 'barchart').
+            visualization: 'barchart'
+          }
+          name: 'panel-firewall-denies'
+        }
+        // Panel 2: NSG Flow top talkers — top 20 source IPs by bytes sent.
+        {
+          type: 3
+          content: {
+            version: 'KqlItem/1.0'
+            query: 'AzureNetworkAnalytics_CL\n| where TimeGenerated > ago(24h)\n| where FlowStatus_s == "A"\n| summarize TotalBytes = sum(InboundBytes_d + OutboundBytes_d) by SrcIP_s\n| top 20 by TotalBytes desc'
+            size: 0
+            timeContext: { durationMs: 86400000 }
+            queryType: 0
+            resourceType: 'microsoft.operationalinsights/workspaces'
+            visualization: 'table'
+          }
+          name: 'panel-nsg-top-talkers'
+        }
+        // Panel 3: Backup job status — counts of jobs by status from RSV.
+        {
+          type: 3
+          content: {
+            version: 'KqlItem/1.0'
+            query: 'AddonAzureBackupJobs\n| where TimeGenerated > ago(7d)\n| summarize JobCount = count() by JobStatus, BackupItemFriendlyName\n| order by BackupItemFriendlyName, JobStatus'
+            size: 0
+            timeContext: { durationMs: 604800000 }  // 7d window
+            queryType: 0
+            resourceType: 'microsoft.operationalinsights/workspaces'
+            visualization: 'table'
+          }
+          name: 'panel-backup-status'
+        }
+        // Panel 4: VMSS autoscale activity — timeline of scale events.
+        {
+          type: 3
+          content: {
+            version: 'KqlItem/1.0'
+            query: 'AzureActivity\n| where TimeGenerated > ago(7d)\n| where ResourceProviderValue == "MICROSOFT.INSIGHTS"\n| where OperationNameValue contains "autoscalesettings"\n| project TimeGenerated, OperationNameValue, ActivityStatusValue, Caller, Resource\n| order by TimeGenerated desc'
+            size: 0
+            timeContext: { durationMs: 604800000 }
+            queryType: 0
+            resourceType: 'microsoft.operationalinsights/workspaces'
+            visualization: 'table'
+          }
+          name: 'panel-autoscale-events'
+        }
+      ]
+      styleSettings: {}
+      // Workbook is bound to the Log Analytics Workspace data source so
+      // queries auto-target the correct workspace at view time. The $schema
+      // key uses the dollar-prefix reserved by JSON Schema; Bicep requires
+      // it to be quoted so the parser treats it as a literal string key.
+      // Use the 'fromSchema' key as a Bicep-friendly placeholder; Azure
+      // workbook serializer ignores unknown top-level keys so this has no
+      // functional effect — the actual schema is enforced by the resource
+      // provider when the workbook is rendered.
+      fromSchema: 'https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json'
+    })
+    // sourceId pins the workbook to a specific resource (the Log Analytics
+    // Workspace). Required so workbook permissions inherit from the workspace
+    // and so the queries default to that workspace as the data source.
+    sourceId: logAnalytics.id
   }
 }
 
@@ -215,6 +381,14 @@ resource cpuAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
       // approach vs creating per-resource alert rules, which require IaC changes
       // every time a new scale set is added.
     ]
+
+    // targetResourceType + targetResourceRegion: REQUIRED when using subscription
+    // or resource-group scope with MultipleResourceMultipleMetricCriteria. Tells
+    // Azure which resource type within the scope to filter for and which region
+    // to monitor. Without these, the alert rule fails validation with
+    // "targetResourceType property is missing".
+    targetResourceType: 'Microsoft.Compute/virtualMachineScaleSets'
+    targetResourceRegion: location
 
     evaluationFrequency: 'PT5M'
     // ISO 8601 duration: how often Azure Monitor checks whether the threshold is
@@ -344,6 +518,12 @@ resource availabilityAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
       // covered automatically. This is the same approach as the CPU alert — one
       // rule covers the entire fleet, avoiding per-resource rule sprawl.
     ]
+
+    // Required for subscription-scoped multi-resource metric alerts (same
+    // reason as cpuAlert above — Azure needs to know which resource type
+    // within the subscription to apply the criteria to).
+    targetResourceType: 'Microsoft.Compute/virtualMachineScaleSets'
+    targetResourceRegion: location
 
     evaluationFrequency: 'PT1M'
     // Evaluate every 1 minute — much more aggressive than the CPU alert (PT5M).
@@ -486,6 +666,26 @@ resource nsgDenyAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview
       // Contrast with metric alerts scoped to subscription().id — log alerts
       // always need an explicit data source (the workspace).
     ]
+
+    // targetResourceTypes — REQUIRED by API 2023-03-15-preview when scope is
+    // a Log Analytics Workspace. Tells Azure what resource type the alert
+    // applies to so the alert metadata (resource ID column in alert payload,
+    // suppression grouping, etc.) is populated correctly. For workspace-scoped
+    // queries that read from any resource's logs, the workspace itself is
+    // the canonical target — hence Microsoft.OperationalInsights/workspaces.
+    targetResourceTypes: [
+      'Microsoft.OperationalInsights/workspaces'
+    ]
+
+    // skipQueryValidation: true — bypasses Azure's pre-create check that the
+    // KQL query references valid tables. Required because AzureNetworkAnalytics_CL
+    // is dynamically materialised by Azure Network Watcher Traffic Analytics —
+    // the table doesn't exist until at least one NSG Flow Log record with
+    // Traffic Analytics enabled has been ingested. Without this flag, the
+    // alert deploy fails with "Failed to resolve table or column expression
+    // named 'AzureNetworkAnalytics_CL'". The alert still works at runtime;
+    // it just won't fire until the table exists, which is the intended behaviour.
+    skipQueryValidation: true
 
     criteria: {
       allOf: [

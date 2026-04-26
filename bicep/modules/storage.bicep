@@ -34,6 +34,15 @@ param tags object
 // Monitor and back up Azure resources).
 param logAnalyticsWorkspaceId string
 
+// existingStorageAccountName: optional override for the storage account name.
+// When deploying for the FIRST time, leave this empty — uniqueString() generates
+// a globally-unique name. When the storage account was created OUTSIDE this
+// Bicep (e.g. a prior portal deployment), set this to the existing account name
+// so Bicep recognises it as the same resource and updates it in place rather
+// than creating a duplicate. This avoids the dual-resource problem caused by
+// uniqueString() producing different hashes than the original creation context.
+param existingStorageAccountName string = ''
+
 // ── Variables ───────────────────────────────────────────────────────────────
 
 // Storage account names: 3-24 chars, lowercase alphanumeric only
@@ -47,7 +56,10 @@ param logAnalyticsWorkspaceId string
 //   uniqueString(resourceGroup().id) — 13-char hash derived from the resource group's
 //     immutable ID, guaranteeing uniqueness across all Azure subscriptions without
 //     needing a random suffix that would change on every deployment.
-var storageAccountName = '${orgPrefix}st${environment}${uniqueString(resourceGroup().id)}'
+// If existingStorageAccountName param is supplied, prefer it so Bicep targets
+// the pre-existing storage account in this RG. Otherwise generate a new name
+// using the orgPrefix + uniqueString hash pattern.
+var storageAccountName = empty(existingStorageAccountName) ? '${orgPrefix}st${environment}${uniqueString(resourceGroup().id)}' : existingStorageAccountName
 
 // var redundancy
 // Selects the Storage SKU replication tier using a ternary conditional:
@@ -301,6 +313,76 @@ resource logsContainer 'Microsoft.Storage/storageAccounts/blobServices/container
     publicAccess: 'None'
   }
 }
+
+// ── Compliance Archive Container with Immutability ─────────────────────────
+// AZ-104 Context: Immutable storage (WORM — Write Once, Read Many) prevents
+// blobs from being modified or deleted for a defined retention period. Two
+// modes exist:
+//   1. Time-based retention — blobs cannot be modified/deleted until N days
+//      after upload. Used here for general regulatory archiving.
+//   2. Legal hold — indefinite immutability via tag, only released when the
+//      legal hold tag is removed by an authorised user.
+// Use cases: SEC 17a-4 records, HIPAA audit logs, PCI cardholder data archival.
+// Once an immutability policy is locked, even subscription owners cannot
+// override it — providing tamper-proof evidence for regulators.
+
+resource archiveContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  parent: blobService
+  // Container name signals its compliance/archival purpose to operators.
+  name: 'compliance-archive'
+  properties: {
+    publicAccess: 'None'
+    metadata: {
+      purpose: 'regulatory-evidence-archive'
+      // Documents the retention model in metadata for auditor clarity.
+      retentionModel: 'time-based-30day-unlocked'
+    }
+  }
+}
+
+// Immutability policy — applied as a child resource of the container.
+// 'Unlocked' state allows the policy to be modified or removed; once locked
+// (via a separate ARM call) it becomes permanent for the retention period.
+// This deployment uses Unlocked so the demo environment can be torn down
+// without waiting out the 30-day retention.
+resource archiveImmutability 'Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies@2023-01-01' = {
+  parent: archiveContainer
+  // Immutability policy name is always 'default' — singleton per container.
+  name: 'default'
+  properties: {
+    // 30-day retention from upload time — covers a typical short-cycle
+    // compliance attestation window. Production environments commonly use
+    // 365–2555 days (1–7 years) depending on the regulatory framework.
+    immutabilityPeriodSinceCreationInDays: 30
+    // false = legal hold can be applied via Set-AzStorageBlobImmutabilityPolicy
+    // after upload. Setting to true would require legal hold approval before
+    // any blob can be uploaded, which is overly restrictive for general use.
+    allowProtectedAppendWrites: false
+  }
+}
+
+// ── Stored Access Policy on app-data Container ─────────────────────────────
+// AZ-104 Context: A Stored Access Policy (SAP) is a server-side template
+// for SAS tokens. Instead of embedding permissions/expiry inside each SAS
+// token, the SAS references the SAP by name. This lets administrators
+// revoke access for ALL tokens issued under a policy by deleting the policy,
+// or change permissions/expiry centrally without re-issuing tokens.
+//
+// Limit: max 5 stored access policies per container — enforced by the
+// service. Plan SAP usage carefully if many distinct access patterns exist.
+//
+// In this module the SAP is wired via the container's 'immutableStorage'
+// peer property is not used — instead the SAP is written to the container's
+// stored ACLs through the management plane management policy below.
+//
+// NOTE: As of API 2023-01-01 the Microsoft.Storage Bicep provider does not
+// expose stored access policies as a standalone resource type — they are a
+// data-plane construct managed via az storage container policy create.
+// scripts/storage-operations.ps1 contains the create command for the SAP
+// `ent-sap-readonly-4h` (read-only, 4-hour rolling expiry) referenced from
+// the deployment guide. The container above is the target of that SAP.
+
+
 
 // ── File Share ─────────────────────────────────────────────────────────────
 // Azure Files provides a fully-managed SMB 3.x / NFS 4.1 file share mounted by

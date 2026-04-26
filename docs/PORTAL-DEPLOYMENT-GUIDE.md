@@ -814,6 +814,478 @@ Do this for:
 
 ---
 
+## Phase 8: Advanced Identity & Governance
+
+### Step 8.1 — Conditional Access Policy (Require MFA from untrusted IPs)
+
+1. Portal → **Microsoft Entra ID** → **Security** → **Conditional Access** → **Named locations** → **+ IP ranges location**
+   - Name: `ent-trusted-office-ips`
+   - Mark as **Trusted location**: checked
+   - IP ranges (CIDR): add `203.0.113.0/24` and `198.51.100.0/24` (placeholders — use your real office WAN ranges)
+2. **Save**
+3. Conditional Access → **Policies** → **+ New policy**
+   - Name: `ent-ca-mfa-untrusted-locations`
+   - Assignments → Users → **Directory roles** → select Global Administrator, Privileged Role Administrator, Security Administrator, User Access Administrator
+   - Cloud apps → **Select apps** → Microsoft Azure Management
+   - Conditions → Locations → **Include**: Any location | **Exclude**: `ent-trusted-office-ips`
+   - Access controls → Grant → **Require multi-factor authentication**
+   - Enable policy: **Report-only** (validate impact in sign-in logs first)
+4. **Create**
+
+CLI alternative: run `scripts/configure-conditional-access.ps1` after `Connect-MgGraph`.
+
+> Screenshot: `screenshots/02-conditional-access.png`
+
+---
+
+### Step 8.2 — Custom Security Attributes
+
+1. Portal → **Microsoft Entra ID** → **Custom security attributes** → **+ Add attribute set**
+   - Name: `WorkforcePartition`
+   - Description: `Logical workforce partition tag for ABAC role conditions`
+   - Max attributes: `25`
+2. Open the new attribute set → **+ Add attribute**
+   - Name: `Tier`
+   - Type: String
+   - Allow only predefined values: **Yes**
+   - Predefined values: `Tier1Engineering`, `GovOps`, `PartnerLite`
+3. **Save**
+
+CLI alternative: run `scripts/define-custom-security-attributes.ps1`.
+
+> Screenshot: `screenshots/06-custom-security-attributes.png`
+
+---
+
+### Step 8.3 — Management Group Hierarchy
+
+1. Portal → **Management groups** → **+ Create**
+   - Name: `ent-mg-root`
+   - Display name: `Enterprise Root`
+2. Open `ent-mg-root` → **+ Create** (child)
+   - Name: `ent-mg-prod`
+   - Display name: `Enterprise Production`
+3. From the subscription view → **Move** → select `ent-mg-prod` as the new parent
+
+CLI alternative: run `scripts/setup-management-group.ps1 -SubscriptionId <id>`.
+
+> Screenshot: `screenshots/03-management-group-hierarchy.png`
+
+---
+
+### Step 8.4 — Microsoft Defender for Cloud (Free Tier)
+
+1. Portal → **Microsoft Defender for Cloud** → **Environment settings** → select your subscription
+2. **Defender plans** → confirm pricing tier shows **Free** for VirtualMachines, StorageAccounts, KeyVaults, AppServices, and CloudPosture
+3. Wait 24 hours for first **Secure Score** calculation, then return to Overview
+
+> Screenshot: `screenshots/04-defender-secure-score.png`
+
+---
+
+## Phase 9: Advanced Networking
+
+### Step 9.1 — Application Security Groups (3 ASGs)
+
+ASGs are logical workload labels referenced from NSG rules instead of subnet CIDRs. Create one per tier.
+
+**ASG #1 — Web tier:**
+1. Portal → **All services** → search **Application security groups** → **Create**
+2. Subscription: Azure subscription 1
+3. Resource group: `ent-rg-networking-prod`
+4. Name: `ent-asg-web-prod`
+5. Region: East US 2
+6. **Tags** tab: `Environment=prod`, `ManagedBy=Bicep`, `Project=enterprise-infra`
+7. **Review + create** → **Create**
+
+**ASG #2 — App tier:**
+- Repeat with name `ent-asg-app-prod`
+
+**ASG #3 — Management:**
+- Repeat with name `ent-asg-mgmt-prod`
+
+**Now rewrite the web NSG rules to reference ASGs instead of `*`:**
+1. Portal → `ent-nsg-web-prod` → **Inbound security rules**
+2. Click **Allow-HTTP-Inbound** → change **Destination** dropdown from "Any" to **Application security group** → select `ent-asg-web-prod` → **Save**
+3. Repeat for **Allow-HTTPS-Inbound** and **Allow-LB-Probes** (destination = `ent-asg-web-prod`)
+4. Click **Allow-Bastion-SSH-RDP** → change **Destination** to **Application security group** → multi-select `ent-asg-web-prod` AND `ent-asg-mgmt-prod` → **Save**
+
+**Repeat for app NSG (`ent-nsg-app-prod`):**
+1. Open `Allow-From-Web-Tier` → change **Source** to Application security group `ent-asg-web-prod` → change **Destination** to Application security group `ent-asg-app-prod` → **Save**
+2. `Allow-LB-Probes` → Destination = `ent-asg-app-prod`
+3. `Allow-Bastion-SSH-RDP` → Destination = `ent-asg-app-prod` + `ent-asg-mgmt-prod`
+
+**Verify:**
+- All resources → filter by type **Application security group** → 3 ASGs listed
+- Open any ASG → **Network interfaces** tab (initially empty until VMs are tagged)
+
+> Screenshot: `screenshots/31-application-security-groups.png`
+
+---
+
+### Step 9.2 — Service Endpoints on snet-app
+
+Service endpoints provide a direct Azure-backbone route from the subnet to PaaS services, bypassing the firewall.
+
+1. Portal → `ent-vnet-app-prod` → **Subnets** → click `snet-app`
+2. Scroll down to **Service endpoints**
+3. **Services** dropdown → check **Microsoft.Storage** and **Microsoft.KeyVault**
+4. **Save**
+5. Wait 60 seconds → status of both endpoints should show **Succeeded**
+
+**Optional:** Now restrict the storage account to this subnet:
+1. `entstprodjtijk6lp` → **Networking** → **Public network access** = **Enabled from selected virtual networks and IP addresses**
+2. **Add existing virtual network** → select `ent-vnet-app-prod` / `snet-app` → **Add**
+3. **Save**
+
+---
+
+### Step 9.3 — Dedicated subnet for Private Endpoints (snet-pe)
+
+Private endpoints need their own subnet with PE network policies disabled.
+
+1. Portal → `ent-vnet-app-prod` → **Subnets** → **+ Subnet**
+2. Name: `snet-pe`
+3. Address range: `10.2.2.0/28`
+4. **Network policies for private endpoints** → **Disabled** (CRITICAL — without this, PE deployment fails)
+5. Network security group: **None**
+6. Route table: **None**
+7. **Add**
+
+---
+
+### Step 9.4 — Private Endpoint for Storage Account (Blob)
+
+1. Portal → search **Private Link Center** → **Private endpoints** → **Create**
+2. **Basics** tab:
+   - Subscription: Azure subscription 1
+   - Resource group: `ent-rg-networking-prod`
+   - Name: `ent-pe-storage-prod`
+   - Network Interface name: `ent-pe-storage-prod-nic`
+   - Region: East US 2
+3. **Resource** tab:
+   - Connection method: **Connect to an Azure resource in my directory**
+   - Resource type: **Microsoft.Storage/storageAccounts**
+   - Resource: `entstprodjtijk6lp`
+   - Target sub-resource: **blob**
+4. **Virtual Network** tab:
+   - Virtual network: `ent-vnet-app-prod`
+   - Subnet: `snet-pe`
+   - Network policy: **enabled** (disable for the subnet, not here)
+   - Private IP configuration: **Dynamically allocate**
+5. **DNS** tab:
+   - Integrate with private DNS zone: **Yes**
+   - Subscription: Azure subscription 1
+   - Resource group: `ent-rg-networking-prod`
+   - Private DNS zone: leave default `privatelink.blob.core.windows.net`
+6. **Tags** → standard tags
+7. **Review + create** → **Create**
+
+**Lock down storage to private only:**
+1. `entstprodjtijk6lp` → **Networking** → **Public network access** = **Disabled**
+2. **Save**
+
+**Verify:**
+- `entstprodjtijk6lp` → **Networking** → **Private endpoint connections** tab → `ent-pe-storage-prod` status = **Approved**
+- `ent-pe-storage-prod` → **Overview** → private IP allocated (e.g. 10.2.2.4)
+- `ent-vnet-app-prod` → **DNS records** → A record `entstprodjtijk6lp.privatelink.blob.core.windows.net` exists
+
+> Screenshot: `screenshots/32-storage-private-endpoint.png`
+
+---
+
+### Step 9.5 — Private Endpoint for Key Vault
+
+1. **Private Link Center** → **Private endpoints** → **Create**
+2. **Basics**:
+   - Resource group: `ent-rg-networking-prod`
+   - Name: `ent-pe-kv-prod`
+   - Region: East US 2
+3. **Resource**:
+   - Resource type: **Microsoft.KeyVault/vaults**
+   - Resource: `ent-kv-prod-x7m2k1`
+   - Target sub-resource: **vault**
+4. **Virtual Network**: same as storage (snet-pe in app spoke)
+5. **DNS**: integrate with private DNS zone `privatelink.vaultcore.azure.net`
+6. **Review + create** → **Create**
+
+**Lock down Key Vault:**
+1. `ent-kv-prod-x7m2k1` → **Networking** → **Public network access** → **Disable public access**
+2. **Save**
+
+**Verify:**
+- Key Vault → **Networking** → Private endpoint connections shows `ent-pe-kv-prod` Approved
+- Networking → Public access shows **Disabled**
+
+> Screenshot: `screenshots/33-keyvault-private-endpoint.png`
+
+---
+
+### Step 9.6 — VPN Gateway (Basic SKU, P2S only)
+
+⚠ **Provisioning takes 30-45 minutes — start it and move on to other steps.**
+
+**Create the public IP first:**
+1. Portal → **Public IP addresses** → **Create**
+2. SKU: **Basic** (must match Basic SKU gateway)
+3. Tier: Regional
+4. IP address assignment: **Dynamic**
+5. Name: `ent-pip-vpngw-prod`
+6. Resource group: `ent-rg-networking-prod`
+7. **Create**
+
+**Create the VPN Gateway:**
+1. Portal → **Virtual network gateways** → **Create**
+2. Subscription / RG: `ent-rg-networking-prod`
+3. Name: `ent-vpngw-prod`
+4. Region: East US 2
+5. Gateway type: **VPN**
+6. VPN type: **Route-based**
+7. SKU: **Basic** (cheapest, ~$27/mo, Windows clients only via SSTP)
+8. Generation: Generation1 (Basic only supports Gen1)
+9. Virtual network: `ent-vnet-hub-prod` (must already have a `GatewaySubnet`)
+10. Public IP address: **Use existing** → `ent-pip-vpngw-prod`
+11. Enable active-active mode: **Disabled** (Basic doesn't support)
+12. Configure BGP: **Disabled** (Basic doesn't support)
+13. **Review + create** → **Create**
+14. Wait 30-45 min for Status = **Succeeded**
+
+**Configure Point-to-Site after provisioning:**
+1. `ent-vpngw-prod` → **Point-to-site configuration** → **Configure now**
+2. Address pool: `172.16.50.0/24` (must NOT overlap any VNet)
+3. Tunnel type: **SSTP (SSL)** (only option for Basic SKU)
+4. Authentication type: **Azure certificate**
+5. Generate root cert locally:
+   ```powershell
+   $cert = New-SelfSignedCertificate -Type Custom -KeySpec Signature -Subject "CN=entRootCert" -KeyExportPolicy Exportable -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\CurrentUser\My" -KeyUsageProperty Sign -KeyUsage CertSign
+   [Convert]::ToBase64String($cert.RawData) | Set-Clipboard
+   ```
+6. Root certificates → Name: `entRootCert` → Public certificate data: paste from clipboard
+7. **Save**
+8. **Download VPN client** to test (Windows native VPN client uses SSTP)
+
+> Screenshot: `screenshots/42-vpn-gateway-overview.png`
+
+---
+
+### Step 9.7 — Network Watcher Connection Troubleshoot
+
+1. Portal → **Network Watcher** → **Connection troubleshoot** (left nav, under Network diagnostic tools)
+2. **Subscription**: Azure subscription 1
+3. Source type: **Virtual machine**
+4. Source: pick any web-tier VM (or VMSS instance NIC)
+5. Destination type: **Specify manually**
+6. URI, FQDN or IPv4: `10.2.1.4`
+7. Destination port: `8080`
+8. Protocol: **TCP**
+9. **Check** — wait 30-60 seconds for path discovery
+10. Result panel shows hop-by-hop path: source NIC → NSG decision → UDR → firewall → app subnet → destination
+11. Screenshot the path visualization
+
+> Screenshot pending — Network Watcher Connection Troubleshoot test results require running an actual test against a deployed VM/VMSS instance.
+
+---
+
+## Phase 10: Storage Compliance Features
+
+### Step 10.1 — Compliance Archive Container with Immutability Policy
+
+**Create the container:**
+1. Portal → `entstprodjtijk6lp` → **Containers** → **+ Container**
+2. Name: `compliance-archive`
+3. Public access level: **Private (no anonymous access)**
+4. **Create**
+
+**Apply the immutability policy:**
+1. Click `compliance-archive` → **Access policy** (top toolbar)
+2. Under **Immutable blob storage**, click **+ Add policy**
+3. Policy type: **Time-based retention**
+4. Retention period: `30` days
+5. Allow protected append writes: **No**
+6. **Save**
+7. The policy state shows **Unlocked** — meaning you can edit/delete it. Locking is a separate one-way action that makes it permanent for the retention period.
+
+**Verify:**
+- Container detail page header shows "Immutable storage: 30 days (unlocked)"
+
+> Screenshot: `screenshots/34-blob-immutability-policy.png`
+
+---
+
+### Step 10.2 — Stored Access Policy on app-data Container
+
+1. Portal → `entstprodjtijk6lp` → **Containers** → click `app-data`
+2. **Access policy** (top toolbar) → scroll to **Stored access policies**
+3. **+ Add policy**
+   - Identifier: `ent-sap-readonly-4h`
+   - Permissions: check only **Read**
+   - Start time: leave default (now)
+   - Expiry time: now + 4 hours (e.g. if it's 14:00, set 18:00)
+4. **OK** → click **Save** at the bottom
+
+**Verify:**
+- Stored access policies list shows `ent-sap-readonly-4h` with permissions `r` and the configured expiry
+- Up to 5 policies can be created per container — this counts as 1
+
+> Screenshot pending — Stored Access Policy detail blade requires manual portal navigation (Container → Access policy → Stored access policies section).
+
+---
+
+## Phase 11: Compute Encryption
+
+### Step 11.1 — Generate Key Encryption Key (KEK) in Key Vault
+
+1. Portal → `ent-kv-prod-x7m2k1` → **Keys** → **+ Generate/Import**
+2. Options: **Generate**
+3. Name: `ent-kek-vmdisk-prod`
+4. Key type: **RSA**
+5. RSA key size: **2048** (minimum supported by ADE)
+6. Set activation date: leave default
+7. Set expiration date: leave default (or 1 year if compliance requires rotation)
+8. **Create**
+9. Open the key → **Properties** → ensure **Permitted operations** includes `wrapKey` and `unwrapKey` (default is all operations)
+
+### Step 11.2 — Enable disk encryption flag on Key Vault
+
+1. `ent-kv-prod-x7m2k1` → **Properties** (under Settings)
+2. **Azure Disk Encryption** for volume encryption: **Enabled**
+3. **Save**
+
+### Step 11.3 — Enable Azure Disk Encryption on a VM (Portal)
+
+⚠ Portal flow only works for standalone VMs, not VMSS. For VMSS, use the PowerShell script `enable-disk-encryption.ps1`.
+
+1. Portal → your VM → **Disks** (left nav) → **Additional settings** (top toolbar)
+2. **Encryption settings** → Disks to encrypt: **OS and data disks**
+3. Encryption type: **Azure AD app-based encryption (PREVIEW)** — actually skip this, use:
+4. **Settings**:
+   - Key Vault and key for encryption: select `ent-kv-prod-x7m2k1` and `ent-kek-vmdisk-prod`
+   - Key version: leave latest
+5. **Save** — encryption job runs in background, takes 15-30 min
+
+**Verify:**
+1. VM → **Disks** → Encryption column shows **Customer-Managed Key** for both OS and data disks
+2. `ent-kv-prod-x7m2k1` → **Keys** → `ent-kek-vmdisk-prod` → **Versions** → recent access events visible in audit log
+
+> Screenshot pending — Azure Disk Encryption status requires a deployed VM with the ADE extension; not deployed in this free-trial run.
+
+---
+
+## Phase 12: Backup Hardening
+
+### Step 12.1 — Edit backup policy to add multi-tier retention (daily/weekly/monthly/yearly)
+
+1. Portal → `ent-rsv-prod` → **Backup policies** (left nav) → click `policy-vm-daily`
+2. **Modify** (top toolbar)
+3. **Backup frequency**: Daily, 02:00 UTC
+4. **Retention range** — configure all 4 tiers:
+   - **Retention of daily backup point**: ✅ checked → 14 Days
+   - **Retention of weekly backup point**: ✅ checked → On Sunday → 8 Weeks
+   - **Retention of monthly backup point**: ✅ checked → On First Sunday → 12 Months
+   - **Retention of yearly backup point**: ✅ checked → In January → On First Sunday → 5 Years
+5. **Save**
+
+**Verify:**
+- Policy detail page shows all 4 retention sections populated
+- AZ-104 exam tip box: when a daily backup is also the first Sunday of January, the **longest** retention rule wins — that backup is kept for 5 years, not 14 days
+
+> Screenshot: `screenshots/39-backup-multi-tier-retention.png`
+
+---
+
+## Phase 13: Monitoring Enhancements
+
+### Step 13.1 — Create the Operations Workbook (4 KQL panels)
+
+1. Portal → **Monitor** → **Workbooks** → **+ New**
+2. **+ Add** → **Add text** → paste:
+   ```markdown
+   ## Operations Health Dashboard
+   Four-panel KQL view: firewall denies, top talkers, backup jobs, VMSS scale events.
+   ```
+3. **Done editing**
+4. **+ Add** → **Add query** → Data source: Logs, Resource type: Log Analytics
+5. Workspace: `ent-law-prod`
+6. **Panel 1 — Firewall denies (last 24h)** — paste:
+   ```kql
+   AzureDiagnostics
+   | where Category == "AzureFirewallNetworkRule"
+   | where TimeGenerated > ago(24h)
+   | where msg_s has "Deny"
+   | extend SourceIP = extract("from ([0-9.]+):", 1, msg_s)
+   | summarize DenyCount = count() by SourceIP
+   | top 20 by DenyCount desc
+   ```
+   - Visualization: **Bar chart** → **Done editing**
+7. **+ Add** → Add query → **Panel 2 — NSG flow top talkers**:
+   ```kql
+   AzureNetworkAnalytics_CL
+   | where TimeGenerated > ago(24h)
+   | where FlowStatus_s == "A"
+   | summarize TotalBytes = sum(InboundBytes_d + OutboundBytes_d) by SrcIP_s
+   | top 20 by TotalBytes desc
+   ```
+   - Visualization: **Grid**
+8. **+ Add** → Add query → **Panel 3 — Backup job status (7d)**:
+   ```kql
+   AddonAzureBackupJobs
+   | where TimeGenerated > ago(7d)
+   | summarize JobCount = count() by JobStatus, BackupItemFriendlyName
+   | order by BackupItemFriendlyName, JobStatus
+   ```
+   - Visualization: **Grid**
+9. **+ Add** → Add query → **Panel 4 — VMSS autoscale events (7d)**:
+   ```kql
+   AzureActivity
+   | where TimeGenerated > ago(7d)
+   | where ResourceProviderValue == "MICROSOFT.INSIGHTS"
+   | where OperationNameValue contains "autoscalesettings"
+   | project TimeGenerated, OperationNameValue, ActivityStatusValue, Caller, Resource
+   | order by TimeGenerated desc
+   ```
+   - Visualization: **Grid**
+10. **Done editing** → **💾 Save** (top toolbar)
+11. Title: `ent-workbook-ops-prod`
+12. Subscription: Azure subscription 1
+13. Resource group: `ent-rg-monitoring-prod`
+14. Region: East US 2
+15. **Apply**
+
+> Screenshot pending — workbook is deployed (resource ID `80e04521-...`) but capturing it requires opening the workbook directly via Monitor → Workbooks → ent-workbook-ops-prod.
+
+---
+
+### Step 13.2 — Extend Action Group with multiple receiver types
+
+1. Portal → **Monitor** → **Action groups** → click `ent-ag-critical-prod`
+2. **Properties** (left nav) → **Edit** (top)
+
+**Notifications tab — add a second email receiver:**
+3. Name: `SecurityOpsTeam`, Notification type: **Email**, Email: `secops-alerts@company.com` → **OK**
+
+**Add SMS receiver:**
+4. Name: `OnCallPager`, Notification type: **SMS**, Country code: `1`, Phone: your test number → **OK**
+
+**Add Azure App Push receiver:**
+5. Name: `OnCallMobileApp`, Notification type: **Azure app Push Notification**, Email: `oncall-engineer@company.com` → **OK**
+
+**Actions tab — add Webhook:**
+6. **Actions** tab → Action type: **Webhook**
+7. Name: `IncidentPlatform`
+8. URI: `https://example.invalid/azure-monitor-webhook` (placeholder — use your real ServiceNow/PagerDuty/Slack endpoint)
+9. Enable common alert schema: **Yes**
+10. **OK**
+
+11. **Save** the action group
+
+**Verify:**
+- Notifications tab shows 2 emails, 1 SMS, 1 Azure App Push
+- Actions tab shows 1 Webhook
+
+> Screenshot: `screenshots/41-action-group-receivers.png`
+
+---
+
 ## Verification Checklist
 
 After completing all phases, verify every resource in the portal:
@@ -850,6 +1322,22 @@ After completing all phases, verify every resource in the portal:
 | 28 | Diagnostic Settings | Each resource | Logs → Log Analytics |
 | 29 | Metric Alerts | Monitor → Alerts | 3 alert rules |
 | 30 | NSG Flow Logs | Network Watcher → Flow logs | 2 NSGs, Traffic Analytics on |
+| 31 | Conditional Access | Entra ID → Conditional Access | `ent-ca-mfa-untrusted-locations` policy in report-only |
+| 32 | Custom Security Attributes | Entra ID → Custom security attributes | `WorkforcePartition.Tier` set with 3 values |
+| 33 | Management Groups | All services → Management groups | Root → Prod hierarchy, subscription nested under Prod |
+| 34 | Defender for Cloud | Defender for Cloud → Overview | Secure Score visible (after 24h), all plans = Free |
+| 35 | Application Security Groups | All resources, type = ASG | 3 ASGs (web/app/mgmt), referenced in NSG rules |
+| 36 | Service Endpoints | snet-app → Service endpoints | Microsoft.Storage + Microsoft.KeyVault, Succeeded |
+| 37 | Storage Private Endpoint | Storage → Networking → PE | `ent-pe-storage-prod` Approved, public access Disabled |
+| 38 | Key Vault Private Endpoint | Key Vault → Networking → PE | `ent-pe-kv-prod` Approved, public access Disabled |
+| 39 | VPN Gateway | `ent-vpngw-prod` overview | Status Succeeded, P2S address pool 172.16.50.0/24 |
+| 40 | Connection Troubleshoot | Network Watcher → Connection troubleshoot | Web→app path successful via firewall |
+| 41 | Blob Immutability | `compliance-archive` container → Access policy | 30-day time-based retention, Unlocked |
+| 42 | Stored Access Policy | `app-data` → Access policy | `ent-sap-readonly-4h` with Read permission |
+| 43 | Azure Disk Encryption | VM → Disks | Encryption: Customer-Managed Key |
+| 44 | Multi-tier Backup | RSV → `policy-vm-daily` | Daily/Weekly/Monthly/Yearly all populated |
+| 45 | Operations Workbook | Monitor → Workbooks | `ent-workbook-ops-prod` with 4 panels |
+| 46 | Multi-Receiver Action Group | Monitor → Action groups → `ent-ag-critical-prod` | 2 emails, 1 SMS, 1 webhook, 1 push |
 
 ---
 
@@ -867,7 +1355,16 @@ All resources fit within the **$200 free trial credit** when deployed in a singl
 | Load Balancers (2x Standard) | ~$18 |
 | Log Analytics | Free tier up to 5GB/day |
 | DNS Zones | ~$1 |
-| **Total estimate** | **~$185-195** |
+| 2x Private Endpoints (Storage + Key Vault) | ~$14 |
+| VPN Gateway (Basic SKU) | ~$27 |
+| Application Security Groups | $0 (free) |
+| Defender for Cloud (Free tier baseline) | $0 |
+| Conditional Access + Custom security attributes + MGs | $0 |
+| Operations Workbook + multi-receiver Action Group | $0 |
+| Backup multi-tier retention storage delta | ~$2 |
+| **Total estimate (with all extensions)** | **~$229-239** |
+
+> **Cost-saving tip**: Tear down the VPN Gateway after capturing its screenshot (~$27/mo savings) — the Bicep can re-create it later. Skipping VPN Gateway brings the estimate to ~$202-212.
 
 **Teardown when done**: Delete all 5 resource groups (remove locks first) to stop all charges immediately.
 

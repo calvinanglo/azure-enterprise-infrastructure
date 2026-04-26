@@ -76,6 +76,19 @@ param globalTags object = {
 @description('Admin password for VMSS instances — inject from Key Vault or pipeline secret')
 param adminPassword string
 
+// Existing-resource-name overrides — supplied by parameter files when the
+// storage account or Key Vault was created outside this Bicep template (for
+// example via an earlier portal deployment). Empty string = let Bicep generate
+// a new globally-unique name; non-empty = pin to that exact name so the
+// deployment updates the existing resource in place rather than creating a
+// duplicate. Required because uniqueString() is deterministic per-input but
+// produces different output than was used at original creation time.
+@description('Existing storage account name to update in place; empty = generate a new name')
+param existingStorageAccountName string = ''
+
+@description('Existing Key Vault name to update in place; empty = generate a new name')
+param existingKeyVaultName string = ''
+
 // ── Variables ───────────────────────────────────────────────────────────────
 
 // resourceGroupNames: A single object variable that consolidates all resource
@@ -193,6 +206,9 @@ module keyvault 'modules/keyvault.bicep' = {
     // Chain the workspace ID from monitoring so Key Vault sends audit logs
     // (access events, key rotation) to the central Log Analytics workspace.
     logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
+    // Reuse the existing vault name (created outside this Bicep) so the
+    // deployment updates it in place rather than creating a duplicate.
+    existingKeyVaultName: existingKeyVaultName
   }
 }
 
@@ -213,6 +229,9 @@ module storage 'modules/storage.bicep' = {
     // Enables Storage diagnostic settings (blob access logs, metrics)
     // to route to the central Log Analytics workspace.
     logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
+    // Pin to the pre-existing storage account so the deployment updates it
+    // in place rather than provisioning a second account.
+    existingStorageAccountName: existingStorageAccountName
   }
 }
 
@@ -233,6 +252,22 @@ module hubNetwork 'modules/hub-network.bicep' = {
     tags: globalTags
     // Hub network sends NSG flow logs and firewall diagnostics to this workspace.
     logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
+  }
+}
+
+// ── Module: Application Security Groups ─────────────────────────────────────
+// AZ-104: ASGs are logical workload tags applied to NICs that NSG rules
+// reference instead of subnet CIDRs. Deployed before spokeNetwork so the
+// spoke NSG rules can reference ASG IDs in their source/destination fields.
+// ASGs are FREE — pure ARM-only constructs with no compute/storage backing.
+module asgs 'modules/asgs.bicep' = {
+  name: 'deploy-asgs-${deploymentTimestamp}'
+  scope: rgNetworking  // Co-located with NSGs and other network primitives.
+  params: {
+    location: location
+    environment: environment
+    orgPrefix: orgPrefix
+    tags: globalTags
   }
 }
 
@@ -260,8 +295,80 @@ module spokeNetwork 'modules/spoke-network.bicep' = {
     // next-hop for 0.0.0.0/0, enforcing centralized egress inspection.
     firewallPrivateIp: hubNetwork.outputs.firewallPrivateIp
     logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
+    // ASG IDs from the asgs module — referenced in NSG rules via
+    // sourceApplicationSecurityGroups / destinationApplicationSecurityGroups
+    // arrays for modern micro-segmentation patterns.
+    asgWebId: asgs.outputs.asgWebId
+    asgAppId: asgs.outputs.asgAppId
+    asgMgmtId: asgs.outputs.asgMgmtId
   }
 }
+
+// ── Module: Private Endpoints ───────────────────────────────────────────────
+// AZ-104: Deploys Private Endpoints for Storage Account (blob subresource)
+// and Key Vault (vault subresource), plus the corresponding Private DNS zones
+// (privatelink.blob.core.windows.net, privatelink.vaultcore.azure.net) with
+// VNet links to the hub and both spokes. After this module deploys, the
+// storage account's and Key Vault's publicNetworkAccess can be set to
+// Disabled and in-VNet workloads still resolve them to private IPs.
+//
+// Cost: ~$14/mo total ($7 per PE) plus negligible per-GB processing.
+//
+// Depends on storage and keyvault modules (for resource IDs) and on
+// spokeNetwork (for the snet-pe subnet that hosts the PE NICs).
+module privateEndpoints 'modules/private-endpoints.bicep' = {
+  name: 'deploy-private-endpoints-${deploymentTimestamp}'
+  // Co-locate with the networking RG so PE resources sit alongside other
+  // networking primitives (NSGs, VNets, route tables, peering).
+  scope: rgNetworking
+  params: {
+    location: location
+    environment: environment
+    orgPrefix: orgPrefix
+    tags: globalTags
+    // Dedicated subnet for PE NICs — has privateEndpointNetworkPolicies
+    // disabled so PE deployment can bind without policy interference.
+    peSubnetId: spokeNetwork.outputs.peSubnetId
+    // PaaS resource targets — PEs bind to specific subresources of these.
+    storageAccountId: storage.outputs.storageAccountId
+    keyVaultId: keyvault.outputs.keyVaultId
+    // VNet IDs for Private DNS zone vnet links — required so each VNet
+    // resolves the PE FQDNs to private IPs instead of public.
+    hubVnetId: hubNetwork.outputs.hubVnetId
+    webVnetId: spokeNetwork.outputs.webVnetId
+    appVnetId: spokeNetwork.outputs.appVnetId
+  }
+}
+
+// ── Module: VPN Gateway (DISABLED for free trial) ───────────────────────────
+// AZ-104: Deploys a Basic-SKU Point-to-Site VPN Gateway in the hub VNet's
+// pre-existing GatewaySubnet. Demonstrates hybrid connectivity — individual
+// clients can connect over SSTP and access in-VNet resources without exposing
+// public IPs. Basic SKU is the cheapest path; production uses VpnGw1+ SKUs
+// that support OpenVPN/IKEv2 and BGP.
+//
+// Cost: ~$27/mo. Provisioning takes 30-45 minutes — the longest-deploying
+// resource in the project.
+//
+// COMMENTED OUT: Free trial subscriptions cap at 3 Public IPs in the region,
+// and this module adds a 3rd PIP (`ent-pip-vpngw-prod`) on top of the existing
+// Bastion + LB PIPs, exceeding the quota. To enable in production:
+//   1. Request Public IP quota increase via the Azure portal, OR
+//   2. Upgrade subscription to Pay-As-You-Go (gets standard quota), OR
+//   3. Deploy the VPN Gateway separately via PORTAL-DEPLOYMENT-GUIDE.md → Step 9.6
+//      (single resource won't trigger orchestrator-level quota validation).
+//
+// module vpnGateway 'modules/vpn-gateway.bicep' = {
+//   name: 'deploy-vpn-gateway-${deploymentTimestamp}'
+//   scope: rgNetworking
+//   params: {
+//     location: location
+//     environment: environment
+//     orgPrefix: orgPrefix
+//     tags: globalTags
+//     hubVnetId: hubNetwork.outputs.hubVnetId
+//   }
+// }
 
 // ── Module: Load Balancers ──────────────────────────────────────────────────
 // AZ-104: Deploys Azure Load Balancers for both the web tier (public-facing,
@@ -286,39 +393,37 @@ module loadBalancers 'modules/load-balancers.bicep' = {
   }
 }
 
-// ── Module: Compute (VMSS) ──────────────────────────────────────────────────
+// ── Module: Compute (VMSS) — DISABLED for free trial ────────────────────────
 // AZ-104: Deploys Virtual Machine Scale Sets for the web and app tiers.
 // VMSS provides horizontal scaling (auto-scale rules based on CPU/memory),
 // rolling upgrades, and integration with Azure Load Balancer backend pools.
-// The module has the most dependencies — it needs subnet IDs (networking),
-// LB backend pool IDs (load-balancers), storage (boot diagnostics), and
-// Key Vault (to fetch secrets via managed identity at runtime).
-module compute 'modules/compute.bicep' = {
-  name: 'deploy-compute-${deploymentTimestamp}'
-  scope: rgCompute  // VMs and VMSS land in the compute resource group
-  params: {
-    location: location
-    environment: environment
-    orgPrefix: orgPrefix
-    tags: globalTags
-    // VMSS NIC configurations reference these subnet IDs to place
-    // instances in the correct spoke subnets.
-    webSubnetId: spokeNetwork.outputs.webSubnetId
-    appSubnetId: spokeNetwork.outputs.appSubnetId
-    // Backend pool IDs are needed so VMSS NIC IP configs are registered
-    // with the respective load balancer automatically at scale-out.
-    webLbBackendPoolId: loadBalancers.outputs.webLbBackendPoolId
-    appLbBackendPoolId: loadBalancers.outputs.appLbBackendPoolId
-    logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
-    // VMSS instances use system-assigned managed identity to pull secrets
-    // from Key Vault without storing credentials in the VM extension config.
-    keyVaultName: keyvault.outputs.keyVaultName
-    keyVaultResourceGroup: rgSecurity.name
-    // Admin password flows from main.bicep's @secure() param — never stored
-    // in source. Supplied via Key Vault reference or pipeline secret.
-    adminPassword: adminPassword
-  }
-}
+//
+// COMMENTED OUT: Free trial subscriptions have a 4-core regional quota in
+// eastus2, but the web + app VMSS together require 12 cores (Standard_B2s ×
+// 2 instances × 2 scale sets × 2 vCPU/instance + extras). To enable:
+//   1. Request 'Total Regional vCPUs' quota increase to 12+ in Azure portal
+//      (Subscriptions → Usage + quotas → Request increase), OR
+//   2. Upgrade subscription to Pay-As-You-Go (gets 20-core default quota), OR
+//   3. Deploy compute manually via the portal one VM at a time to fit quota.
+//
+// module compute 'modules/compute.bicep' = {
+//   name: 'deploy-compute-${deploymentTimestamp}'
+//   scope: rgCompute
+//   params: {
+//     location: location
+//     environment: environment
+//     orgPrefix: orgPrefix
+//     tags: globalTags
+//     webSubnetId: spokeNetwork.outputs.webSubnetId
+//     appSubnetId: spokeNetwork.outputs.appSubnetId
+//     webLbBackendPoolId: loadBalancers.outputs.webLbBackendPoolId
+//     appLbBackendPoolId: loadBalancers.outputs.appLbBackendPoolId
+//     logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
+//     keyVaultName: keyvault.outputs.keyVaultName
+//     keyVaultResourceGroup: rgSecurity.name
+//     adminPassword: adminPassword
+//   }
+// }
 
 // ── Module: Backup (Recovery Services) ──────────────────────────────────────
 // AZ-104: Deploys a Recovery Services Vault and backup policies for VMs.
@@ -364,60 +469,57 @@ module dns 'modules/dns.bicep' = {
 // connects the App Service to the spoke network so it can reach the app tier
 // over private IPs rather than traversing the public internet. Diagnostic
 // logs (HTTP logs, application logs) route to Log Analytics.
-module appService 'modules/app-service.bicep' = {
-  name: 'deploy-appservice-${deploymentTimestamp}'
-  scope: rgCompute  // PaaS compute alongside IaaS in the same compute RG
-  params: {
-    location: location
-    environment: environment
-    orgPrefix: orgPrefix
-    tags: globalTags
-    logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
-    // VNet Integration subnet — the App Service delegates outbound traffic
-    // through this subnet to access private resources in the spoke VNet.
-    appSubnetId: spokeNetwork.outputs.appSubnetId
-  }
-}
+// COMMENTED OUT: App Service Plan + Web App. Free trial subscriptions can
+// often only deploy F1 (Free) tier; this module uses B1+ which may hit the
+// regional App Service plan quota. Re-enable after upgrading subscription.
+//
+// module appService 'modules/app-service.bicep' = {
+//   name: 'deploy-appservice-${deploymentTimestamp}'
+//   scope: rgCompute
+//   params: {
+//     location: location
+//     environment: environment
+//     orgPrefix: orgPrefix
+//     tags: globalTags
+//     logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
+//     appSubnetId: spokeNetwork.outputs.appSubnetId
+//   }
+// }
 
-// ── Module: Containers (ACI + ACR) ──────────────────────────────────────────
-// AZ-104: Deploys Azure Container Registry (ACR) for private image storage
-// and Azure Container Instances (ACI) for lightweight container workloads.
-// ACR stores Docker images; ACI provides on-demand container execution
-// without managing underlying VMs. ACI is connected to the spoke VNet via
-// the appSubnetId for private network access, avoiding public endpoint
-// exposure for internal workloads.
-module containers 'modules/containers.bicep' = {
-  name: 'deploy-containers-${deploymentTimestamp}'
-  scope: rgCompute  // Container workloads co-located with other compute
-  params: {
-    location: location
-    environment: environment
-    orgPrefix: orgPrefix
-    tags: globalTags
-    // ACI is injected into this subnet so container network traffic stays
-    // on the private spoke network and routes through the hub Firewall.
-    appSubnetId: spokeNetwork.outputs.appSubnetId
-    logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
-  }
-}
+// ── Module: Containers (ACI + ACR) — DISABLED for free trial ────────────────
+// COMMENTED OUT: ACR Basic + ACI deploy fine on free trial cost-wise (~$5/mo
+// + per-second), but this module pre-creates a network-injected ACI that
+// requires container creation succeeding before downstream resources resolve.
+// Re-enable once compute/VMSS are also deployed.
+//
+// module containers 'modules/containers.bicep' = {
+//   name: 'deploy-containers-${deploymentTimestamp}'
+//   scope: rgCompute
+//   params: {
+//     location: location
+//     environment: environment
+//     orgPrefix: orgPrefix
+//     tags: globalTags
+//     appSubnetId: spokeNetwork.outputs.appSubnetId
+//     logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
+//   }
+// }
 
-// ── Module: Disks & Snapshots ───────────────────────────────────────────────
-// AZ-104: Deploys standalone managed disks (Premium SSD / Standard SSD)
-// and disk snapshots for demonstration of Azure disk management. Managed
-// disks are the recommended block storage type for Azure VMs — they provide
-// SLA-backed redundancy (LRS/ZRS/GRS) and integrate with Azure Backup.
-// Snapshots enable point-in-time capture of a disk's state for recovery or
-// test environment cloning.
-module disks 'modules/disks.bicep' = {
-  name: 'deploy-disks-${deploymentTimestamp}'
-  scope: rgCompute  // Disks are compute resources; co-located with VMs
-  params: {
-    location: location
-    environment: environment
-    orgPrefix: orgPrefix
-    tags: globalTags
-  }
-}
+// ── Module: Disks & Snapshots — DISABLED for free trial ────────────────────
+// COMMENTED OUT: Standalone managed disks + snapshots cost ~$15/mo for the
+// 128 GB Premium SSD allocated. Re-enable when running the full enterprise
+// deploy with VMSS and App Service.
+//
+// module disks 'modules/disks.bicep' = {
+//   name: 'deploy-disks-${deploymentTimestamp}'
+//   scope: rgCompute
+//   params: {
+//     location: location
+//     environment: environment
+//     orgPrefix: orgPrefix
+//     tags: globalTags
+//   }
+// }
 
 // ── Module: Governance ──────────────────────────────────────────────────────
 // AZ-104: Deploys Azure Policy assignments and resource locks at the
@@ -443,6 +545,22 @@ module governance 'modules/governance.bicep' = {
       rgMonitoring.name
     ]
   }
+  // Wait for monitoring + storage + keyvault + backup writes to finish before
+  // creating resource locks. Otherwise the ReadOnly lock on the monitoring RG
+  // is applied first and blocks the workbook + VMInsights solution writes
+  // with ScopeLocked errors. Same pattern protects the security and
+  // networking RGs from race conditions on subsequent module updates.
+  dependsOn: [
+    monitoring
+    storage
+    keyvault
+    backup
+    privateEndpoints
+    spokeNetwork
+    hubNetwork
+    loadBalancers
+    asgs
+  ]
 }
 
 // ── Module: Identity (RBAC) ─────────────────────────────────────────────────
@@ -527,15 +645,11 @@ output storageAccountName string = storage.outputs.storageAccountName
 // compliance.
 output recoveryVaultName string = backup.outputs.vaultName
 
-// webAppHostname: The default hostname of the App Service web app
-// (e.g., ent-app-prod.azurewebsites.net). Used for smoke tests and DNS
-// CNAME record creation.
-output webAppHostname string = appService.outputs.webAppDefaultHostname
-
-// acrLoginServer: The login server FQDN of the Azure Container Registry
-// (e.g., entacrprod.azurecr.io). Used by CI/CD pipelines for docker push
-// and by ACI deployments to pull images.
-output acrLoginServer string = containers.outputs.acrLoginServer
+// webAppHostname / acrLoginServer outputs commented out — the appService
+// and containers modules are disabled for the free trial deploy. Re-enable
+// after upgrading subscription quotas.
+// output webAppHostname string = appService.outputs.webAppDefaultHostname
+// output acrLoginServer string = containers.outputs.acrLoginServer
 
 // dnsNameServers: The authoritative name server array for the public DNS
 // zone. After deployment, these NS records must be set at your domain

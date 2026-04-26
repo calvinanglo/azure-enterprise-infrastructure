@@ -49,6 +49,26 @@ param firewallPrivateIp string
 // security events are aggregated in one place for SIEM/monitoring purposes.
 param logAnalyticsWorkspaceId string
 
+// Application Security Group resource IDs supplied by the asgs.bicep module.
+// Passing IDs (rather than constructing names) decouples this module from
+// ASG naming conventions and lets ASGs live in a different resource group
+// in the future without code changes here.
+//
+// AZ-104 micro-segmentation pattern: NSG rules reference these ASG IDs
+// instead of subnet CIDR strings, so the security posture survives subnet
+// renumbering and supports VMs that span multiple subnets.
+
+// Web tier ASG — referenced as the destination on web-tier inbound rules.
+param asgWebId string
+
+// App tier ASG — referenced as the destination on app-tier inbound rules
+// and indirectly on web→app egress rules (via sourceApplicationSecurityGroups).
+param asgAppId string
+
+// Management ASG — referenced as the destination on rules that permit
+// administrative SSH/RDP access from the Bastion subnet.
+param asgMgmtId string
+
 // ── Variables ───────────────────────────────────────────────────────────────
 
 // Constructed VNet names following the CAF naming convention:
@@ -149,80 +169,76 @@ resource webNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
   properties: {
     securityRules: [
       {
-        // Permit public HTTP traffic to web-tier VMs / load balancer frontend.
-        // Port 80 is required for plain-text access and HTTP→HTTPS redirects.
+        // Permit public HTTP traffic — destination scoped to the web ASG
+        // instead of '*'. Any VM tagged with asg-web-* receives this rule
+        // automatically, even if it moves to a different subnet later.
         name: 'Allow-HTTP-Inbound'
         properties: {
-          // Priority 100 — evaluated first, well below the 4096 deny-all.
-          // Lower priorities (100-199) are reserved for critical allow rules.
           priority: 100
-          direction: 'Inbound'  // Applies to traffic arriving at the subnet.
-          access: 'Allow'
-          protocol: 'Tcp'       // HTTP only runs over TCP.
-          // 'Internet' is an Azure service tag representing all public IP ranges
-          // not belonging to Azure datacentres — avoids maintaining an IP list.
-          sourceAddressPrefix: 'Internet'
-          // Source port is ephemeral and unpredictable; wildcard is correct here.
-          sourcePortRange: '*'
-          // '*' = any IP within the subnet — the NSG is already subnet-scoped.
-          destinationAddressPrefix: '*'
-          destinationPortRange: '80'
-        }
-      }
-      {
-        // Permit public HTTPS traffic. Encrypted web traffic is the production
-        // standard; this rule is required alongside port 80 for full web access.
-        name: 'Allow-HTTPS-Inbound'
-        properties: {
-          priority: 110  // One slot after HTTP; both are high-priority allows.
           direction: 'Inbound'
           access: 'Allow'
           protocol: 'Tcp'
           sourceAddressPrefix: 'Internet'
           sourcePortRange: '*'
-          destinationAddressPrefix: '*'
+          // ASG-based destination: the rule applies only to NICs that are
+          // members of asgWebId. Mutually exclusive with destinationAddressPrefix.
+          destinationApplicationSecurityGroups: [
+            { id: asgWebId }
+          ]
+          destinationPortRange: '80'
+        }
+      }
+      {
+        // HTTPS counterpart — same ASG-scoped destination so encrypted web
+        // traffic is granted alongside port 80 for redirect handling.
+        name: 'Allow-HTTPS-Inbound'
+        properties: {
+          priority: 110
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'Internet'
+          sourcePortRange: '*'
+          destinationApplicationSecurityGroups: [
+            { id: asgWebId }
+          ]
           destinationPortRange: '443'
         }
       }
       {
-        // Allow Azure Load Balancer health probes to reach backend VMs.
-        // If this rule is missing, health probes fail, the LB marks all
-        // instances as unhealthy, and traffic stops flowing even if VMs are up.
-        // 'AzureLoadBalancer' is an Azure service tag resolving to 168.63.129.16,
-        // the magic IP Azure uses for all internal platform communications.
+        // Load balancer health probe path — also scoped to the web ASG so
+        // only web-tier VMs receive probes from the platform 168.63.129.16 IP.
         name: 'Allow-LB-Probes'
         properties: {
           priority: 120
           direction: 'Inbound'
           access: 'Allow'
           protocol: 'Tcp'
-          sourceAddressPrefix: 'AzureLoadBalancer'  // Azure service tag — platform probe IP.
+          sourceAddressPrefix: 'AzureLoadBalancer'
           sourcePortRange: '*'
-          destinationAddressPrefix: '*'
-          // Wildcard port because probe port is configured on the LB rule,
-          // not fixed in the NSG — keeps the NSG decoupled from LB config.
+          destinationApplicationSecurityGroups: [
+            { id: asgWebId }
+          ]
           destinationPortRange: '*'
         }
       }
       {
-        // Allow Azure Bastion to reach web-tier VMs for SSH (22) and RDP (3389).
-        // Bastion is deployed in the hub VNet's AzureBastionSubnet (10.0.2.0/26).
-        // Restricting the source to that specific /26 prevents any other host
-        // in the 10.x range from attempting SSH/RDP directly, enforcing the
-        // Bastion-only management access pattern required in secure environments.
+        // Bastion management access — destination scoped to BOTH the web ASG
+        // (for management of web VMs) and the management ASG (for any future
+        // jumphosts / admin workstations placed in the web subnet).
+        // Demonstrates the multi-ASG-on-one-rule pattern.
         name: 'Allow-Bastion-SSH-RDP'
         properties: {
-          priority: 200  // Lower priority than web rules; management is secondary.
+          priority: 200
           direction: 'Inbound'
           access: 'Allow'
           protocol: 'Tcp'
-          // Explicit CIDR of the hub's AzureBastionSubnet — more restrictive
-          // than using a service tag, tying access to this specific subnet.
-          sourceAddressPrefix: '10.0.2.0/26'
+          sourceAddressPrefix: '10.0.2.0/26'  // Hub AzureBastionSubnet CIDR.
           sourcePortRange: '*'
-          destinationAddressPrefix: '*'
-          // Both SSH (Linux) and RDP (Windows) management ports are permitted
-          // so the NSG supports mixed OS environments in the web tier.
+          destinationApplicationSecurityGroups: [
+            { id: asgWebId }
+            { id: asgMgmtId }
+          ]
           destinationPortRanges: ['22', '3389']
         }
       }
@@ -262,31 +278,31 @@ resource appNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
   properties: {
     securityRules: [
       {
-        // Permit the web tier to call the app tier on its application ports.
-        // Locking the source to webSubnetPrefix (10.1.1.0/24) ensures that
-        // only web-tier VMs — not arbitrary hosts — can reach the app tier,
-        // implementing micro-segmentation between spoke subnets.
+        // Permit the web tier to call the app tier on application ports.
+        // BOTH source and destination are now ASG-based: this is the strongest
+        // form of micro-segmentation. Even if web VMs move to a different
+        // subnet (e.g. snet-web-2 added later), the rule still works because
+        // ASG membership is per-NIC, not per-subnet.
         name: 'Allow-From-Web-Tier'
         properties: {
           priority: 100
           direction: 'Inbound'
           access: 'Allow'
           protocol: 'Tcp'
-          // Source is the web subnet CIDR variable — if the prefix changes,
-          // this rule stays correct automatically without a separate update.
-          sourceAddressPrefix: webSubnetPrefix
+          // Source: any NIC tagged with the web ASG.
+          sourceApplicationSecurityGroups: [
+            { id: asgWebId }
+          ]
           sourcePortRange: '*'
-          destinationAddressPrefix: '*'
-          // 8080 = HTTP alternative port commonly used by app servers (Tomcat,
-          // Node.js, etc.). 8443 = HTTPS alternative, used when TLS termination
-          // happens at the app tier rather than the web tier or load balancer.
+          // Destination: any NIC tagged with the app ASG.
+          destinationApplicationSecurityGroups: [
+            { id: asgAppId }
+          ]
           destinationPortRanges: ['8080', '8443']
         }
       }
       {
-        // Same rationale as the web-tier LB probe rule: the internal load
-        // balancer fronting app-tier VMs must be able to run health probes or
-        // it will not route traffic to healthy backend instances.
+        // Internal load balancer health probe — destination scoped to app ASG.
         name: 'Allow-LB-Probes'
         properties: {
           priority: 110
@@ -295,15 +311,16 @@ resource appNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
           protocol: 'Tcp'
           sourceAddressPrefix: 'AzureLoadBalancer'
           sourcePortRange: '*'
-          destinationAddressPrefix: '*'
+          destinationApplicationSecurityGroups: [
+            { id: asgAppId }
+          ]
           destinationPortRange: '*'
         }
       }
       {
-        // Same Bastion management rule as the web NSG — Bastion in the hub
-        // must be able to reach app-tier VMs for administrative access.
-        // Source is the same AzureBastionSubnet CIDR (10.0.2.0/26) so access
-        // is still limited to the centralised jump-host path only.
+        // Bastion management access for app-tier VMs — same multi-ASG pattern
+        // as the web NSG rule. Permits SSH/RDP to either app workloads or
+        // management hosts placed in the app subnet.
         name: 'Allow-Bastion-SSH-RDP'
         properties: {
           priority: 200
@@ -312,7 +329,10 @@ resource appNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
           protocol: 'Tcp'
           sourceAddressPrefix: '10.0.2.0/26'  // Hub AzureBastionSubnet CIDR.
           sourcePortRange: '*'
-          destinationAddressPrefix: '*'
+          destinationApplicationSecurityGroups: [
+            { id: asgAppId }
+            { id: asgMgmtId }
+          ]
           destinationPortRanges: ['22', '3389']
         }
       }
@@ -453,6 +473,34 @@ resource appVnet 'Microsoft.Network/virtualNetworks@2023-09-01' = {
           // Same shared route table as the web spoke: all egress goes through
           // the firewall, including app-to-database and app-to-internet traffic.
           routeTable: { id: routeTable.id }
+          // Service endpoints provide an Azure-backbone route from the subnet
+          // directly to the listed PaaS services, bypassing the firewall and
+          // public internet. They also let storage / Key Vault firewall rules
+          // restrict access to "this subnet only" without IP allowlists.
+          // Coexists with private endpoints — service endpoints provide the
+          // route, private endpoints provide a private IP for DNS resolution.
+          serviceEndpoints: [
+            { service: 'Microsoft.Storage' }
+            { service: 'Microsoft.KeyVault' }
+          ]
+        }
+      }
+      {
+        // Dedicated subnet for private endpoint NICs. Private endpoints
+        // require their own subnet because the NIC is allocated from the
+        // subnet's IP range and the subnet must have privateEndpointNetwork
+        // Policies disabled so PE NICs don't inherit any NSG/UDR routing.
+        // Carving out a separate /28 keeps PE IPs out of the app workload
+        // address space and makes capacity planning easier.
+        name: 'snet-pe'
+        properties: {
+          // /28 = 11 usable IPs after Azure reserves 5; enough for 10+ PEs.
+          addressPrefix: '10.2.2.0/28'
+          // Disable PE network policies — required for the PE NIC to bind.
+          // Without this, private endpoints fail to deploy with an opaque
+          // "subnet has private endpoint network policies enabled" error.
+          privateEndpointNetworkPolicies: 'Disabled'
+          // No NSG: PE traffic is platform-managed and not subject to NSG.
         }
       }
     ]
@@ -580,3 +628,8 @@ output webSubnetId string = '${webVnet.id}/subnets/snet-web'
 // Full resource ID of the app subnet — same construction pattern as above.
 // Passed to app-tier NIC and internal load balancer deployments.
 output appSubnetId string = '${appVnet.id}/subnets/snet-app'
+
+// Full resource ID of the dedicated private endpoint subnet (snet-pe).
+// Consumed by private-endpoints.bicep so each PE NIC is allocated from a
+// purpose-built subnet rather than sharing the workload subnet.
+output peSubnetId string = '${appVnet.id}/subnets/snet-pe'

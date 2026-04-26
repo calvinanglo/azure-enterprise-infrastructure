@@ -1001,6 +1001,115 @@ git push
 
 ---
 
+## Phase 7: Advanced Coverage (added to close practice-exam gaps)
+
+### 42. Application Security Groups + ASG-based NSG Rules
+
+```powershell
+# Already deployed by bicep/modules/asgs.bicep on the next 'deploy.ps1' run.
+# Verify:
+az network asg list --resource-group ent-rg-networking-prod --output table
+# Inspect a rule that now uses ASG references instead of subnet CIDRs:
+az network nsg rule show -g ent-rg-networking-prod --nsg-name ent-nsg-app-prod --name Allow-From-Web-Tier --query "{src:sourceApplicationSecurityGroups, dst:destinationApplicationSecurityGroups}" -o json
+```
+
+> **Screenshot 42**: ASG list + NSG rule showing ASG references in source/destination
+
+---
+
+### 43. Service Endpoints + Private Endpoints
+
+```powershell
+# Service endpoints (already on snet-app):
+az network vnet subnet show -g ent-rg-networking-prod --vnet-name ent-vnet-app-prod -n snet-app --query serviceEndpoints
+
+# Private endpoints (deployed by bicep/modules/private-endpoints.bicep):
+az network private-endpoint list -g ent-rg-networking-prod --output table
+az network private-dns zone list -g ent-rg-networking-prod --output table
+
+# Lock down storage and Key Vault to private only:
+az storage account update -g ent-rg-storage-prod -n entstprodjtijk6lp --public-network-access Disabled
+az keyvault update -g ent-rg-security-prod -n ent-kv-prod-x7m2k1 --public-network-access Disabled
+```
+
+> **Screenshot 43a**: Storage Account → Networking → publicNetworkAccess = Disabled, PE shown
+> **Screenshot 43b**: Key Vault → Networking → publicNetworkAccess = Disabled, PE shown
+
+---
+
+### 44. VPN Gateway (Basic SKU, P2S)
+
+```powershell
+# Provisioning takes 30-45 minutes. Deploy via:
+az deployment sub create --location eastus2 --template-file bicep/main.bicep --parameters bicep/parameters/prod.bicepparam
+
+# After provisioning, generate a self-signed root cert and upload:
+$cert = New-SelfSignedCertificate -Type Custom -KeySpec Signature -Subject "CN=entRootCert" -KeyExportPolicy Exportable -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\CurrentUser\My" -KeyUsageProperty Sign -KeyUsage CertSign
+$certPub = [Convert]::ToBase64String($cert.RawData)
+az network vnet-gateway root-cert create -g ent-rg-networking-prod --gateway-name ent-vpngw-prod -n entRootCert --public-cert-data $certPub
+```
+
+> **Screenshot 44**: VPN Gateway overview — Status: Succeeded, IP allocated
+
+---
+
+### 45. Azure Disk Encryption with Key Vault KEK
+
+```powershell
+.\scripts\enable-disk-encryption.ps1 `
+    -ResourceGroup ent-rg-compute-prod `
+    -VmName <vm-name> `
+    -KeyVaultName ent-kv-prod-x7m2k1
+```
+
+> **Screenshot 45**: VM → Disks blade showing encryption: Customer-Managed (Azure)
+
+---
+
+### 46. Conditional Access + Custom Security Attributes + Management Groups + Defender (Free)
+
+```powershell
+# Conditional Access — requires Microsoft.Graph PowerShell:
+.\scripts\configure-conditional-access.ps1
+
+# Custom security attributes:
+.\scripts\define-custom-security-attributes.ps1
+
+# Management groups:
+.\scripts\setup-management-group.ps1 -SubscriptionId (az account show --query id -o tsv)
+
+# Defender for Cloud Free pricing was set by bicep/modules/governance.bicep on the last 'deploy.ps1' run.
+az security pricing list --query "[].{plan:name, tier:pricingTier}" -o table
+```
+
+> **Screenshot 46a**: Conditional Access policy in report-only mode
+> **Screenshot 46b**: Custom security attribute set 'WorkforcePartition' with 3 values
+> **Screenshot 46c**: Management group hierarchy (root → prod → subscription)
+> **Screenshot 46d**: Defender for Cloud secure score (after 24h)
+
+---
+
+### 47. Multi-tier Backup Retention + Operations Workbook + Multi-Receiver Action Group
+
+All deployed by the updated Bicep modules. Verify:
+
+```powershell
+# Backup policy — confirm 4 retention tiers:
+az backup policy show --vault-name ent-rsv-prod --resource-group ent-rg-compute-prod --name policy-vm-daily --query "properties.retentionPolicy" -o json
+
+# Workbook:
+az resource list -g ent-rg-monitoring-prod --resource-type Microsoft.Insights/workbooks -o table
+
+# Action group:
+az monitor action-group show -g ent-rg-monitoring-prod -n ent-ag-critical-prod --query "{emails:emailReceivers[].name, sms:smsReceivers[].name, webhooks:webhookReceivers[].name}" -o json
+```
+
+> **Screenshot 47a**: Backup policy with daily/weekly/monthly/yearly tiers
+> **Screenshot 47b**: Operations workbook with 4 KQL panels rendering
+> **Screenshot 47c**: Action group with 4 receiver types
+
+---
+
 ### 41. Teardown
 
 **IMPORTANT:** Delete resources when done to avoid charges.
